@@ -1,20 +1,17 @@
 extends CanvasLayer
-## Debug-HUD.
-## - Fadenkreuz in der Bildmitte (beide Kamera-Modi): gruen = Grapple-Punkt,
-##   orange = Gegner im Lock.
-## - Lock-Marker rastet auf den per Auto-Aim gefundenen Punkt/Gegner ein.
-## - Seil-Status (Q / E / RMB), Speed, State, Dash, Kamera-Modus, FPS.
+## Debug-HUD (clean): nur Fadenkreuz + Infotext.
+## Der Auto-Aim arbeitet unsichtbar im Hintergrund – Seil und Trefferpunkt
+## sieht der Spieler direkt in der Welt. Das Fadenkreuz faerbt sich nur dezent.
 
 @export var guardian_path: NodePath
 
 const STATE_NAMES := ["NORMAL", "DASH", "HOOKED", "WALLRUN"]
-const COL_POINT := Color(0.3, 1.0, 0.5)
-const COL_ENEMY := Color(1.0, 0.55, 0.2)
-const COL_IDLE := Color(1, 1, 1, 0.6)
+const COL_POINT := Color(0.3, 1.0, 0.5, 0.9)
+const COL_ENEMY := Color(1.0, 0.55, 0.2, 0.9)
+const COL_IDLE := Color(1, 1, 1, 0.5)
 
 var _guardian: GuardianController
 var _crosshair: Label
-var _lock: Label
 var _info: Label
 var _hooks: Label
 
@@ -27,21 +24,18 @@ func _ready() -> void:
 	_crosshair.grow_horizontal = Control.GROW_DIRECTION_BOTH
 	_crosshair.grow_vertical = Control.GROW_DIRECTION_BOTH
 
-	_lock = _make_label("[   ]", 26)
-	_lock.size = Vector2(80, 40)
-
 	_info = _make_label("", 16)
 	_info.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	_info.position = Vector2(16, 12)
 
-	_hooks = _make_label("", 20)
+	_hooks = _make_label("", 18)
 	_hooks.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)
 	_hooks.grow_horizontal = Control.GROW_DIRECTION_BOTH
 	_hooks.position.y -= 90
 
 	var help := _make_label(
-			"WASD Laufen | Shift Sprint | Space Sprung / am Seil Hoehe | Strg Dash | P Kamera\n"
-			+ "LMB Messer | RMB halten Combat-Grapple + Lock | Q / E halten Swing links / rechts | R Reset", 14)
+			"WASD Laufen | Shift Sprint | Space Sprung / am Seil einholen | Q/Strg Dash | P Kamera\n"
+			+ "LMB Messer | RMB halten Grapple | RMB Doppel-Tap = 2. Haken (Slingshot / Nest) | R Reset", 14)
 	help.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	help.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT)
 	help.position += Vector2(16, -56)
@@ -70,17 +64,13 @@ func _process(_delta: float) -> void:
 		col = COL_ENEMY
 	_crosshair.modulate = col
 
-	# Lock-Marker auf den eingerasteten Punkt projizieren
-	var show_lock := g.aim_kind != GuardianController.AimKind.NONE \
-			and (g.aim_assisted or g.aim_kind == GuardianController.AimKind.ENEMY) \
-			and not g.camera.is_position_behind(g.aim_point)
-	_lock.visible = show_lock
-	if show_lock:
-		_lock.modulate = col
-		_lock.position = g.camera.unproject_position(g.aim_point) - _lock.size * 0.5
-
-	_hooks.text = "%s Q    %s RMB    %s E" % [
-		_dot(g.hook_left.active), _dot(g.hook_combat.active), _dot(g.hook_right.active)]
+	var mode := ""
+	match g.dual_mode:
+		GuardianController.DualMode.SLINGSHOT:
+			mode = "   SLINGSHOT %d%%" % int(g.slingshot_charge * 100.0)
+		GuardianController.DualMode.NEST:
+			mode = "   NEST"
+	_hooks.text = "%s L   %s R%s" % [_dot(g.hook_left.active), _dot(g.hook_right.active), mode]
 
 	var v := g.velocity
 	var horiz := Vector2(v.x, v.z).length()

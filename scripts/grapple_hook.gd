@@ -1,6 +1,6 @@
 class_name GrappleHook
 extends RefCounted
-## Ein einzelnes Seil (Swing links, Swing rechts oder Combat).
+## Ein einzelnes Seil (Hueft-Werfer links oder rechts).
 ##
 ## Verwaltet Ankerpunkt, Ziel (Gegner) und die Knickpunkte, an denen sich das
 ## Seil um Geometrie legt (Bending). Die eigentliche Seilphysik rechnet der
@@ -9,7 +9,7 @@ extends RefCounted
 ## Kette: anchor -> bends[0] -> bends[1] -> ... -> Spieler.
 ## Der letzte Knickpunkt ist der aktuelle physikalische Pivot.
 
-enum Kind { SWING_LEFT, SWING_RIGHT, COMBAT }
+enum Kind { HIP_LEFT, HIP_RIGHT }
 enum Phase { PULL, DIVE, TETHER }
 
 const BEND_OFFSET := 0.12   # Knickpunkt leicht von der Kante weg
@@ -22,6 +22,9 @@ var phase: Phase = Phase.TETHER
 var target: Node3D = null
 var target_offset := Vector3.ZERO
 var anchor := Vector3.ZERO
+var normal := Vector3.ZERO     # Oberflaechen-Normale am Anker (Decke: y < 0)
+## Slack = Taste losgelassen, Doppel-Tap-Fenster laeuft: Seil haengt locker, keine Kraft.
+var slack := false
 var bends: Array[Vector3] = []
 var rope_length := 0.0      # freie Laenge vom Pivot zum Spieler
 var attach_height := 0.0
@@ -35,8 +38,10 @@ func _init(hook_kind: Kind) -> void:
 	kind = hook_kind
 
 
-func attach(point: Vector3, hit_target: Node3D, player_pos: Vector3) -> void:
+func attach(point: Vector3, surface_normal: Vector3, hit_target: Node3D, player_pos: Vector3) -> void:
 	active = true
+	slack = false
+	normal = surface_normal
 	target = hit_target
 	anchor = point
 	target_offset = hit_target.global_transform.affine_inverse() * point if hit_target else Vector3.ZERO
@@ -45,12 +50,13 @@ func attach(point: Vector3, hit_target: Node3D, player_pos: Vector3) -> void:
 	_bend_planes.clear()
 	rope_length = player_pos.distance_to(point)
 	attach_height = player_pos.y
-	phase = Phase.PULL if kind == Kind.COMBAT else Phase.TETHER
+	phase = Phase.PULL
 	phase_time = 0.0
 
 
 func release() -> void:
 	active = false
+	slack = false
 	target = null
 	bends.clear()
 	_bend_lengths.clear()

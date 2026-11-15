@@ -6,12 +6,10 @@ extends RefCounted
 ##
 ## Layout:
 ##   LMB / X ............ attack        (Jagdmesser-Slash)
-##   RMB / LT ........... hook_combat   (Target-Lock + Combat-Grapple, halten)
-##   Q / LB ............. hook_left     (Momentum-Swing links, halten)
-##   E / RB ............. hook_right    (Momentum-Swing rechts, halten)
+##   RMB / LT ........... grapple       (Dual-Hip-Grapple: halten; Doppel-Tap = 2. Haken)
 ##   Shift / L3 ......... sprint
-##   Space / A .......... jump          (am Seil: Hoehen-Kompensation / Einholen)
-##   Strg / B ........... dash
+##   Space / A .......... jump          (am Seil: einholen; Dual: Slingshot / Nest-Absprung)
+##   Q / Strg / B ....... dash
 ##   P / View ........... toggle_camera (First-/Third-Person)
 ##   R / Menu ........... reset
 
@@ -30,10 +28,8 @@ const BINDINGS := {
 	"jump": [["key", KEY_SPACE], ["joy", JOY_BUTTON_A]],
 	"sprint": [["key", KEY_SHIFT], ["joy", JOY_BUTTON_LEFT_STICK]],
 	"attack": [["mouse", MOUSE_BUTTON_LEFT], ["joy", JOY_BUTTON_X]],
-	"hook_combat": [["mouse", MOUSE_BUTTON_RIGHT], ["axis", JOY_AXIS_TRIGGER_LEFT, 1.0]],
-	"hook_left": [["key", KEY_Q], ["joy", JOY_BUTTON_LEFT_SHOULDER]],
-	"hook_right": [["key", KEY_E], ["joy", JOY_BUTTON_RIGHT_SHOULDER]],
-	"dash": [["key", KEY_CTRL], ["joy", JOY_BUTTON_B]],
+	"grapple": [["mouse", MOUSE_BUTTON_RIGHT], ["axis", JOY_AXIS_TRIGGER_LEFT, 1.0]],
+	"dash": [["key", KEY_Q], ["key", KEY_CTRL], ["joy", JOY_BUTTON_B]],
 	"toggle_camera": [["key", KEY_P], ["joy", JOY_BUTTON_BACK]],
 	"reset": [["key", KEY_R], ["joy", JOY_BUTTON_START]],
 }

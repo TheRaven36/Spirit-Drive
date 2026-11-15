@@ -25,7 +25,9 @@ func _run() -> void:
 	await _test_combat_dive()
 	await _test_combat_grapple_point()
 	await _test_rope_bending()
-	await _test_momentum_swing()
+	await _test_hip_alternation()
+	await _test_slingshot()
+	await _test_nest()
 	await _test_wallrun()
 
 	print("SMOKE TEST: %s" % ("OK" if _fails == 0 else "%d FEHLER" % _fails))
@@ -80,7 +82,7 @@ func _test_knife() -> void:
 	await _tap("attack")
 	await _frames(15)
 	_check(d.hp < hp_before, "Slash trifft Dummy (%.0f -> %.0f)" % [hp_before, d.hp])
-	_check(not g.any_hook_active(), "LMB loest keinen Grapple aus")
+	_check(g.hooks_out() == 0, "LMB loest keinen Grapple aus")
 	await _tap("attack")
 	await _frames(4)
 	_check(g.knife.combo_index == 1, "Combo zaehlt hoch (%d)" % g.knife.combo_index)
@@ -119,7 +121,7 @@ func _test_aim_assist() -> void:
 
 
 func _test_combat_dive() -> void:
-	print("Combat-Grapple auf Gegner (RMB)")
+	print("Grapple auf Gegner (RMB)")
 	var d := _dummy_near(Vector3(0, 18, -60))
 	await _place(Vector3(0, 1.2, -30), 0.0, 0.0)
 	_aim_at(d.get_lock_point())
@@ -127,26 +129,30 @@ func _test_combat_dive() -> void:
 	await _frames(3)
 	_check(g.aim_target == d, "Ziel im Lock")
 	var hits := d.hits_taken
-	Input.action_press("hook_combat")
+	Input.action_press("grapple")
+	await _frames(2)
+	var h := _active_hook()
 	var dived := false
 	for i in 120:
 		await physics_frame
-		if g.hook_combat.phase == GrappleHook.Phase.DIVE:
+		if h.phase == GrappleHook.Phase.DIVE:
 			dived = true
 		if d.hits_taken > hits:
 			break
 	_check(dived, "Sturzangriff von oben ausgeloest")
 	_check(d.hits_taken > hits, "Sturzangriff trifft (HP %.0f)" % d.hp)
 	await _frames(120)
-	_check(g.hook_combat.active, "Seil bleibt nach dem Treffer dran")
-	Input.action_release("hook_combat")
+	_check(h.active, "Seil bleibt nach dem Treffer dran")
+	Input.action_release("grapple")
 	await _frames(2)
-	_check(not g.hook_combat.active, "Loslassen loest das Seil")
+	_check(h.active and h.slack and not g.any_hook_active(), "Loslassen: Seil sofort locker (Doppel-Tap-Fenster)")
+	await _frames(int(g.double_tap_window * 60.0) + 3)
+	_check(g.hooks_out() == 0, "nach dem Fenster komplett geloest")
 	await _frames(90)
 
 
 func _test_combat_grapple_point() -> void:
-	print("Combat-Grapple auf Geometrie")
+	print("Grapple auf Geometrie")
 	await _place(Vector3(0, 1.2, 0), 0.0, 0.0)
 	var t := _closest_tower()
 	_aim_at(t.pos + Vector3(0, t.size.y * 0.25, 0))
@@ -154,20 +160,22 @@ func _test_combat_grapple_point() -> void:
 	await _frames(3)
 	_check(g.aim_kind == GuardianController.AimKind.POINT, "Turm anvisiert")
 	var start := g.global_position.distance_to(g.aim_point)
-	Input.action_press("hook_combat")
+	Input.action_press("grapple")
+	await _frames(2)
+	var h := _active_hook()
 	var rebounded := false
 	var min_d := INF
 	for i in 240:  # 4 Sekunden halten
 		await physics_frame
-		min_d = minf(min_d, g.global_position.distance_to(g.hook_combat.anchor_world()))
-		if g.hook_combat.phase == GrappleHook.Phase.TETHER:
+		min_d = minf(min_d, g.global_position.distance_to(h.anchor_world()))
+		if h.phase == GrappleHook.Phase.TETHER:
 			rebounded = true
 	_check(min_d < start - 10.0, "zieht mit Wucht heran (%.1f -> %.1f)" % [start, min_d])
 	_check(rebounded, "Rebound am Ankerpunkt (Bogen drueber hinaus)")
-	_check(g.hook_combat.active, "reissfest: nach 4 s noch eingehakt")
-	Input.action_release("hook_combat")
-	await _frames(2)
-	_check(not g.hook_combat.active and g.velocity.length() > 3.0,
+	_check(h.active, "reissfest: nach 4 s noch eingehakt")
+	Input.action_release("grapple")
+	await _frames(int(g.double_tap_window * 60.0) + 3)
+	_check(not h.active and g.velocity.length() > 3.0,
 			"Release behaelt Momentum (%.1f)" % g.velocity.length())
 	await _frames(120)
 
@@ -179,10 +187,11 @@ func _test_rope_bending() -> void:
 	_aim_at(t.pos + Vector3(0, t.size.y * 0.3, 0))
 	await _process_frames(2)
 	await _frames(3)
-	Input.action_press("hook_combat")
+	Input.action_press("grapple")
 	await _frames(2)
+	var h := _active_hook()
 	# Hindernis zwischen Spieler und Anker schieben
-	var mid := g.global_position.lerp(g.hook_combat.anchor_world(), 0.4)
+	var mid := g.global_position.lerp(h.anchor_world(), 0.4)
 	var wall := StaticBody3D.new()
 	var cs := CollisionShape3D.new()
 	var box := BoxShape3D.new()
@@ -192,44 +201,109 @@ func _test_rope_bending() -> void:
 	arena.add_child(wall)
 	wall.global_position = mid
 	await _frames(2)
-	_check(g.hook_combat.has_bends(), "Seil knickt am Hindernis (%d Knick)" % g.hook_combat.bends.size())
+	_check(h.has_bends(), "Seil knickt am Hindernis (%d Knick)" % h.bends.size())
 	var ex: Array[RID] = [g.get_rid()]
-	var pivot := g.hook_combat.pivot()
+	var pivot := h.pivot()
 	var q := PhysicsRayQueryParameters3D.create(g.global_position, pivot, 1, ex)
 	var hit := g.get_world_3d().direct_space_state.intersect_ray(q)
 	_check(hit.is_empty() or (hit.position as Vector3).distance_to(pivot) < 0.5,
 			"freie Linie Spieler -> Pivot (kein Durchschneiden)")
-	Input.action_release("hook_combat")
+	Input.action_release("grapple")
 	wall.queue_free()
 	await _frames(90)
 
 
-func _test_momentum_swing() -> void:
-	print("Momentum-Swing (Q/E)")
-	await _place(Vector3(-100, 10, -10), 0.0, 0.1)
-	g.velocity = Vector3(0, 0, -14)
-	Input.action_press("hook_left")
+func _test_hip_alternation() -> void:
+	print("Dual-Hip: Wechsel links/rechts")
+	await _place(Vector3(0, 1.2, 0), 0.0, 0.0)
+	var t := _closest_tower()
+	_aim_at(t.pos + Vector3(0, t.size.y * 0.3, 0))
+	await _process_frames(2)
+	await _frames(3)
+	Input.action_press("grapple")
 	await _frames(2)
-	_check(g.hook_left.active, "Q wirft linken Haken")
-	var a := g.hook_left.anchor_world()
-	_check(a.x < -100.0 and a.z < -10.0, "Anker links vorne (%.0f, %.0f, %.0f)" % [a.x, a.y, a.z])
-	var min_y := INF
-	for i in 60:
-		await physics_frame
-		min_y = minf(min_y, g.global_position.y)
-	_check(min_y > 8.5, "Hoehe bleibt beim Schwingen (min y %.1f)" % min_y)
-	Input.action_release("hook_left")
-	Input.action_press("hook_right")
+	var first := _active_hook()
+	Input.action_release("grapple")
+	await _frames(int(g.double_tap_window * 60.0) + 3)
+	await _place(Vector3(0, 1.2, 0), 0.0, 0.0)
+	_aim_at(t.pos + Vector3(0, t.size.y * 0.3, 0))
+	await _process_frames(2)
+	await _frames(3)
+	Input.action_press("grapple")
 	await _frames(2)
-	_check(g.hook_right.active and not g.hook_left.active, "E wirft rechten Haken")
-	var b := g.hook_right.anchor_world()
-	_check(b.x > -100.0, "Anker rechts (x %.0f)" % b.x)
-	var z0 := g.global_position.z
+	var second := _active_hook()
+	_check(first != null and second != null and first != second,
+			"Klicks wechseln zwischen linker und rechter Huefte")
+	Input.action_release("grapple")
+	await _frames(int(g.double_tap_window * 60.0) + 3)
+
+
+func _test_slingshot() -> void:
+	print("Dual-Hook: Slingshot")
+	_first_person(true)
+	await _place(Vector3(0, 1.2, 0), 0.0, 0.0)
+	var towers := _two_towers()
+	_aim_at(towers[0].pos + Vector3(0, 8, 0))
+	await _process_frames(2)
+	await _frames(3)
+	Input.action_press("grapple")
+	await _frames(10)
+	Input.action_release("grapple")
+	await _frames(3)
+	_aim_at(towers[1].pos + Vector3(0, 8, 0))
+	await _process_frames(2)
+	await _frames(1)
+	Input.action_press("grapple")  # Doppel-Tap
+	await _frames(2)
+	_check(g.hooks_out() == 2, "Doppel-Tap setzt zweiten Haken")
+	_check(g.dual_mode == GuardianController.DualMode.SLINGSHOT, "weit auseinander -> Slingshot")
 	await _frames(60)
-	_check(g.global_position.z < z0 - 8.0, "Schwung nach vorne (dz %.1f)" % (g.global_position.z - z0))
-	_check(g.hook_right.active, "Haken bleibt bis zum Loslassen")
-	Input.action_release("hook_right")
-	await _frames(120)
+	_check(g.slingshot_charge > 0.95, "Halten laedt Spannung (%.0f%%)" % (g.slingshot_charge * 100.0))
+	_check(g.hooks_out() == 2, "beide Seile bleiben unter Spannung dran")
+	g._pitch = 0.1
+	await _process_frames(2)
+	await _frames(1)
+	Input.action_release("grapple")
+	await _frames(2)
+	var sp := g.velocity.length()
+	_check(sp > g.slingshot_max_speed * 0.8 and g.velocity.y > 0.0,
+			"Loslassen schleudert nach vorne/oben (%.1f m/s)" % sp)
+	_check(g.hooks_out() == 0, "nach dem Schuss beide Seile geloest")
+	await _frames(150)
+	_first_person(false)
+
+
+func _test_nest() -> void:
+	print("Dual-Hook: Tactical Nest")
+	_first_person(true)
+	await _place(Vector3(-60, 4.0, 100), 0.0, 0.0)
+	_aim_at(Vector3(-62.5, 9.0, 97.0))
+	await _process_frames(2)
+	await _frames(1)
+	Input.action_press("grapple")
+	await _frames(4)
+	Input.action_release("grapple")
+	await _frames(2)
+	_aim_at(Vector3(-57.5, 9.0, 103.0))
+	await _process_frames(2)
+	await _frames(1)
+	Input.action_press("grapple")
+	await _frames(2)
+	_check(g.hooks_out() == 2 and g.dual_mode == GuardianController.DualMode.NEST,
+			"Decke / enger Raum -> Tactical Nest")
+	await _frames(60)
+	var p0 := g.global_position
+	await _frames(60)
+	var drift := g.global_position.distance_to(p0)
+	_check(drift < 0.3 and g.velocity.length() < 0.5,
+			"haengt stabil in der Luft (Drift %.2f m)" % drift)
+	_check(g.global_position.y > 5.0, "Haengepunkt unter der Decke (y %.1f)" % g.global_position.y)
+	await _tap("jump", 2)
+	_check(g.hooks_out() == 0 and g.velocity.length() > 10.0,
+			"Sprung beendet das Nest mit Absprung (%.1f m/s)" % g.velocity.length())
+	Input.action_release("grapple")
+	await _frames(90)
+	_first_person(false)
 
 
 func _test_wallrun() -> void:
@@ -268,8 +342,35 @@ func _place(pos: Vector3, yaw: float, pitch: float) -> void:
 	await _frames(2)
 
 
+func _active_hook() -> GrappleHook:
+	for h in g.hooks:
+		if h.active:
+			return h
+	return null
+
+
+func _first_person(on: bool) -> void:
+	if g.first_person != on:
+		g.toggle_camera()
+	g._cam_blend = 1.0 if on else 0.0
+
+
+func _two_towers() -> Array:
+	# Zwei Tuerme, die beide vor dem Spieler liegen und weit auseinander sind.
+	var list: Array = []
+	for b: Dictionary in arena._boxes:
+		if b.size.y > 20.0 and b.size.x > 3.5 and (b.pos as Vector3).length() < 60.0:
+			list.append(b)
+	list.sort_custom(func(a, b): return (a.pos as Vector3).length() < (b.pos as Vector3).length())
+	for i in list.size():
+		for j in range(i + 1, list.size()):
+			if (list[i].pos as Vector3).distance_to(list[j].pos) > 25.0:
+				return [list[i], list[j]]
+	return [list[0], list[1]]
+
+
 func _aim_at(p: Vector3) -> void:
-	var cam := g.global_position + Vector3.UP * g.tp_height
+	var cam := g.global_position + Vector3.UP * (g.fp_height if g.first_person else g.tp_height)
 	var v := p - cam
 	g._yaw = atan2(-v.x, -v.z)
 	g._pitch = atan2(v.y, Vector2(v.x, v.z).length())
@@ -302,7 +403,7 @@ func _tap(action: String, frames := 2) -> void:
 
 func _release_all() -> void:
 	for a in ["move_forward", "move_back", "move_left", "move_right", "sprint", "jump",
-			"attack", "hook_combat", "hook_left", "hook_right", "dash"]:
+			"attack", "grapple", "dash"]:
 		Input.action_release(a)
 
 
