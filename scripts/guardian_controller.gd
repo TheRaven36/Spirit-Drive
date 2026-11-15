@@ -15,10 +15,13 @@ extends CharacterBody3D
 ##           - Free-Flow (ohne Lock): LMB halten greift automatisch den Gegner
 ##             unter/nahe dem Fadenkreuz in Grapple-Reichweite (Auto-Grab) und zieht
 ##             heran, LMB loslassen = Momentum-Slash im Anflug.
-##           - Hard-Lock (Mausrad-Klick / R3): Kamera rastet auf das Ziel/den
-##             Trefferpunkt ein, Mausrad = Ziel-Wechsel. Der Lock bleibt auch
-##             ausserhalb der Grapple-Reichweite (Rahmen grau, kein Seil moeglich).
-##             LMB halten = Seil zum Lock-Punkt, loslassen = Schlag.
+##           - Ziel-Auswahl (Mausrad-Klick / R3): waehlt das Ziel unterm Fadenkreuz
+##             und gibt einen Kamera-Snap-Impuls darauf – danach ist die Kamera sofort
+##             wieder frei. Erneut druecken = erneuter Snap, gedrueckt halten = Ziel loesen.
+##             Mausrad = Trefferpunkt-Wechsel am gewaehlten Gegner (Nacken, Knie ...).
+##             Die Auswahl bleibt bis 3x Grapple-Reichweite bestehen (ausserhalb der
+##             Reichweite grau, kein Seil), danach wird sie automatisch geloescht.
+##             LMB halten = Seil zum gewaehlten Punkt, loslassen = Schlag.
 ##           Ganz nah am Ziel (< auto_grab_min_dist) schlaegt LMB direkt zu.
 ## Kamera:   P = Third-/First-Person, nahtlos ueberblendet.
 ##
@@ -98,13 +101,21 @@ enum AimKind { NONE, POINT, ENEMY }
 ## Mindest-Fang-Radius (m) um den Fadenkreuz-Strahl.
 @export var auto_grab_radius := 3.5
 
-# --- Hard-Lock ------------------------------------------------------------
+# --- Ziel-Auswahl (Hard-Lock) & Kamera-Snap -------------------------------
 @export_group("Hard Lock")
-## Bis zu dieser Distanz laesst sich ein Ziel einrasten/durchschalten (auch ausserhalb
-## der Grapple-Reichweite – dann grau). Ein bestehender Lock wird NIE wegen Distanz geloest.
+## Bis zu dieser Distanz laesst sich ein Ziel waehlen/durchschalten (auch ausserhalb
+## der Grapple-Reichweite – dann grau).
 @export var lock_acquire_range := 120.0
-## Wie schnell die Kamera dem Lock-Ziel folgt (1/s, exponentielle Glaettung).
-@export var lock_camera_speed := 14.0
+## Auswahl wird geloescht, sobald das Ziel weiter als grapple_range * Faktor entfernt ist.
+@export var lock_expire_range_mult := 3.0
+## Dauer des Kamera-Snap-Impulses (s). Danach gehoert die Kamera wieder dem Spieler.
+@export var snap_duration := 0.22
+## So lange Mausrad-Klick / R3 halten, um die Auswahl zu loesen (s).
+@export var lock_clear_hold := 0.45
+## Fang-Kegel fuer das Combat-/Auto-Grab-Fenster waechst mit dem Tempo (Grad pro m/s) ...
+@export var speed_cone_per_mps := 0.06
+## ... bis maximal so viele Grad zusaetzlich.
+@export var speed_cone_max_bonus := 5.0
 
 # --- Auto-Aim -------------------------------------------------------------
 @export_group("Aim Assist")
@@ -195,6 +206,10 @@ var _cycle_order: Array[Node3D] = []
 ## [zeit, geschwindigkeit] vor move_and_slide – Anflug-Momentum fuer den Schlag.
 var _vel_history: Array = []
 var _clock := 0.0
+## Kamera-Snap: Fortschritt (s), -1 = kein Snap. Start-Winkel fuer die Ueberblendung.
+var _snap_t := -1.0
+var _snap_from := Vector2.ZERO
+var _lock_hold_t := -1.0
 
 
 func _ready() -> void:
@@ -217,14 +232,13 @@ func _ready() -> void:
 # =========================================================================
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
-		if is_hard_locked():
-			return  # Kamera gehoert dem Lock
+		_snap_t = -1.0  # Spieler uebernimmt sofort – Snap abbrechen
 		_yaw -= event.relative.x * mouse_sensitivity
 		_pitch = clampf(_pitch - event.relative.y * mouse_sensitivity, -1.45, 1.35)
 	elif event.is_action_pressed("toggle_camera"):
 		toggle_camera()
 	elif event.is_action_pressed("hard_lock"):
-		toggle_hard_lock()
+		press_target_button()
 	elif event.is_action_pressed("lock_next"):
 		cycle_lock(1)
 	elif event.is_action_pressed("lock_prev"):
@@ -289,6 +303,7 @@ func _physics_process(delta: float) -> void:
 		_respawn()
 		return
 
+	_update_lock_button(delta)
 	_update_hard_lock()
 	_handle_hook_input(delta)
 	_handle_attack_input()
@@ -746,8 +761,9 @@ func _update_auto_grab() -> void:
 				auto_grab_target = t
 		if auto_grab_target != null:
 			return
+	var speed_bonus := minf(velocity.length() * speed_cone_per_mps, speed_cone_max_bonus)
 	auto_grab_target = _find_lock_target(space, start, aim_forward(), grapple_range,
-			auto_grab_cone_deg, auto_grab_radius)
+			auto_grab_cone_deg + speed_bonus, auto_grab_radius)
 
 
 ## Startpunkt der Ziel-Strahlen: auf Spielerhoehe entlang des Kamera-Strahls.
@@ -883,24 +899,66 @@ func _is_lockable(t: Object) -> bool:
 # =========================================================================
 # Hard-Lock & Ziel-Wechsel
 # =========================================================================
-## Mausrad-Klick / R3: Ziel unterm Fadenkreuz einrasten bzw. Lock loesen.
-## Einrasten geht bis lock_acquire_range – auch ausserhalb der Grapple-Reichweite.
+## Mausrad-Klick / R3: ohne Auswahl das Ziel unterm Fadenkreuz waehlen, dann
+## Kamera-Snap-Impuls auf das gewaehlte Ziel. Gedrueckt halten (lock_clear_hold)
+## loest die Auswahl – siehe _update_lock_button().
+func press_target_button() -> void:
+	_lock_hold_t = 0.0
+	if not is_hard_locked():
+		var t := lock_target
+		if t == null:
+			t = _find_lock_target(get_world_3d().direct_space_state, _aim_start(), aim_forward(),
+					lock_acquire_range, assist_cone_deg, assist_radius)
+		hard_lock = t
+		_cycle_order.clear()
+	snap_camera_to_target()
+
+
+## Alter Toggle (Tests/Debug): waehlt bzw. loest die Auswahl ohne Snap.
 func toggle_hard_lock() -> void:
 	if hard_lock != null:
 		release_hard_lock()
-		return
-	var t := lock_target
-	if t == null:
-		t = _find_lock_target(get_world_3d().direct_space_state, _aim_start(), aim_forward(),
-				lock_acquire_range, assist_cone_deg, assist_radius)
-	if t != null:
+	else:
+		var t := lock_target
+		if t == null:
+			t = _find_lock_target(get_world_3d().direct_space_state, _aim_start(), aim_forward(),
+					lock_acquire_range, assist_cone_deg, assist_radius)
 		hard_lock = t
 		_cycle_order.clear()
 
 
+## Kamera-Snap-Impuls: richtet die Kamera in snap_duration weich auf das gewaehlte Ziel.
+func snap_camera_to_target() -> void:
+	if not is_hard_locked():
+		return
+	_snap_t = 0.0
+	_snap_from = Vector2(_yaw, _pitch)
+
+
+func is_snapping() -> bool:
+	return _snap_t >= 0.0
+
+
+func _update_lock_button(delta: float) -> void:
+	if _lock_hold_t < 0.0:
+		return
+	if not Input.is_action_pressed("hard_lock"):
+		_lock_hold_t = -1.0
+		return
+	_lock_hold_t += delta
+	if _lock_hold_t >= lock_clear_hold:
+		_lock_hold_t = -1.0
+		release_hard_lock()
+
+
 func release_hard_lock() -> void:
 	hard_lock = null
+	_snap_t = -1.0
 	_cycle_order.clear()
+
+
+func lock_expire_range() -> float:
+	return grapple_range * lock_expire_range_mult
 
 
 func is_hard_locked() -> bool:
@@ -918,6 +976,17 @@ func hard_lock_in_range() -> bool:
 ## wuerde die mitdrehende Lock-Kamera die Sortierung bei jedem Schritt umwerfen.
 func cycle_lock(step: int) -> void:
 	var list := lock_candidates()
+	# Gegner mit mehreren Trefferpunkten gewaehlt -> nur durch dessen Punkte schalten.
+	if is_hard_locked():
+		var rc := hit_receiver_of(hard_lock)
+		var parts: Array[Node3D] = []
+		for t in list:
+			if hit_receiver_of(t) == rc:
+				parts.append(t)
+		if not parts.has(hard_lock):
+			parts.append(hard_lock)
+		if parts.size() > 1:
+			list = parts
 	var order: Array[Node3D] = []
 	for t in _cycle_order:
 		if is_instance_valid(t) and (list.has(t) or t == hard_lock):
@@ -962,12 +1031,13 @@ func lock_candidates() -> Array[Node3D]:
 	return out
 
 
-## Lock faellt nur weg, wenn das Ziel verschwindet oder nicht mehr anvisierbar ist
-## (z. B. besiegt) – NICHT wegen Distanz.
+## Auswahl faellt weg, wenn das Ziel verschwindet/besiegt ist oder weiter als
+## lock_expire_range_mult x Grapple-Reichweite entfernt ist (Auto-Clear).
 func _update_hard_lock() -> void:
 	if hard_lock == null:
 		return
-	if not is_instance_valid(hard_lock) or not _is_lockable(hard_lock):
+	if not is_instance_valid(hard_lock) or not _is_lockable(hard_lock) \
+			or global_position.distance_to(_lock_point_of(hard_lock)) > lock_expire_range():
 		release_hard_lock()
 		_release_combat_hooks()
 
@@ -1007,6 +1077,7 @@ func _set_state(new_state: State) -> void:
 func _respawn() -> void:
 	_release_all_hooks()
 	release_hard_lock()
+	_lock_hold_t = -1.0
 	global_position = _spawn
 	velocity = Vector3.ZERO
 	_vel_history.clear()
@@ -1019,7 +1090,8 @@ func _respawn() -> void:
 # =========================================================================
 func _process(delta: float) -> void:
 	var look := Input.get_vector("look_left", "look_right", "look_up", "look_down")
-	if look != Vector2.ZERO and not is_hard_locked():
+	if look != Vector2.ZERO:
+		_snap_t = -1.0
 		_yaw -= look.x * stick_sensitivity * delta
 		_pitch = clampf(_pitch - look.y * stick_sensitivity * delta, -1.45, 1.35)
 
@@ -1030,8 +1102,8 @@ func _process(delta: float) -> void:
 
 	var t := get_global_transform_interpolated()
 	var pivot := t.origin + Vector3.UP * lerpf(tp_height, fp_height, b)
-	if is_hard_locked():
-		_track_lock_camera(pivot, delta)
+	if is_snapping():
+		_update_camera_snap(pivot, delta)
 	cam_rig.global_position = pivot
 	cam_rig.rotation = Vector3(0.0, _yaw, 0.0)
 	cam_pitch.rotation = Vector3(_pitch, 0.0, 0.0)
@@ -1053,15 +1125,23 @@ func _process(delta: float) -> void:
 	_update_ropes(t.origin, b)
 
 
-## Hard-Lock-Kamera: dreht Yaw/Pitch weich so, dass der Kamera-Strahl (Fadenkreuz)
-## exakt durch den Lock-Punkt laeuft – inkl. Schulter-Versatz und Spring-Arm-Laenge.
-func _track_lock_camera(pivot: Vector3, delta: float) -> void:
+## Kamera-Snap: blendet Yaw/Pitch in snap_duration auf das (ggf. bewegte) Ziel –
+## inkl. Schulter-Versatz und Spring-Arm-Laenge, dann ist die Kamera wieder frei.
+func _update_camera_snap(pivot: Vector3, delta: float) -> void:
+	if not is_hard_locked():
+		_snap_t = -1.0
+		return
+	_snap_t += delta
 	var goal := lock_view_angles(pivot, _lock_point_of(hard_lock))
 	if goal == Vector2.INF:
+		_snap_t = -1.0
 		return
-	var k := 1.0 - exp(-lock_camera_speed * delta)
-	_yaw = lerp_angle(_yaw, goal.x, k)
-	_pitch = lerpf(_pitch, goal.y, k)
+	var a := clampf(_snap_t / maxf(snap_duration, 0.01), 0.0, 1.0)
+	var k := smoothstep(0.0, 1.0, a)
+	_yaw = lerp_angle(_snap_from.x, goal.x, k)
+	_pitch = lerpf(_snap_from.y, goal.y, k)
+	if a >= 1.0:
+		_snap_t = -1.0
 
 
 ## Yaw/Pitch (x/y), bei denen die Kamera von `pivot` aus genau auf `target` zielt.
@@ -1071,7 +1151,7 @@ func lock_view_angles(pivot: Vector3, target: Vector3) -> Vector2:
 	var local_off := cam_pitch.global_transform.affine_inverse() * camera.global_position
 	var yaw := _yaw
 	var pitch := _pitch
-	for i in 4:
+	for i in 10:
 		var cam_pos := pivot + Basis(Vector3.UP, yaw) * Basis(Vector3.RIGHT, pitch) * local_off
 		var v := target - cam_pos
 		var flat := Vector2(v.x, v.z).length()

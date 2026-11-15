@@ -8,6 +8,9 @@ signal defeated
 
 @export var max_hp := 3000.0
 @export var respawn_time := 4.0
+## Boss-Skalierung: ein Treffer nimmt hoechstens ~diesen Anteil der Max-HP
+## (weicher Deckel, siehe KnifeCombat.scale_for_target) – kein One-Hit-Kill.
+@export var max_hit_fraction := 0.15
 
 var hp := 3000.0
 var hits_taken := 0
@@ -94,6 +97,10 @@ func _ready() -> void:
 	_label.outline_size = 14
 	add_child(_label)
 	_update_label()
+
+
+func get_hit_cap() -> float:
+	return max_hp * max_hit_fraction
 
 
 func is_lockable() -> bool:

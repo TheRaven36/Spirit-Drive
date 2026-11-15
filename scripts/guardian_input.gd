@@ -8,8 +8,8 @@ extends RefCounted
 ##   LMB / X ............ attack        (Jagdmesser-Slash)
 ##   RMB / LT ........... grapple       (straffes Seil, halten; Doppel-Tap = 2. Haken)
 ##   W / S am Seil ...... Winde: W = Turbo-Einzug, S = Bremse (A/D = seitlich)
-##   Mausrad-Klick / R3 . hard_lock     (Ziel einrasten / loesen, Kamera rastet ein)
-##   Mausrad / D-Pad L-R  lock_next / lock_prev (Ziel-/Trefferpunkt-Wechsel)
+##   Mausrad-Klick / R3 . hard_lock     (Ziel waehlen + Kamera-Snap-Impuls, halten = loesen)
+##   Mausrad / D-Pad L-R  lock_next / lock_prev (Trefferpunkt-/Ziel-Wechsel)
 ##   LMB halten ......... Combat-Seil zum Ziel (Hard-Lock oder Gegner unterm
 ##                        Fadenkreuz = Auto-Grab) + heranziehen, loslassen = Schlag
 ##   Shift / L3 ......... sprint

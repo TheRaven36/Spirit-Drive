@@ -4,6 +4,40 @@ Neueste Einträge immer oben.
 
 ## Unreleased (Robin-Branch)
 
+### 2026-11-16 – Freie Kamera + Kamera-Snap, Auto-Clear, High-Speed-Hit-Window, Boss-Skalierung v0.7
+**Freie Kamera statt Dauer-Lock**
+- Der permanente Kamera-Lock ist raus – die Kamera bleibt beim Laufen und Schwingen komplett frei, auch mit
+  gewähltem Ziel.
+- **Mausrad-Klick / R3 = Kamera-Snap-Impuls:** ohne Auswahl wird das Ziel unterm Fadenkreuz gewählt; jeder Klick
+  richtet die Kamera in 0,22 s (`snap_duration`) weich auf das gewählte Ziel/den Trefferpunkt, danach ist sie
+  sofort wieder frei. Maus/Stick bewegen bricht den Snap ab (Spieler hat Vorrang).
+- **Gedrückt halten (0,45 s, `lock_clear_hold`) löst die Auswahl.**
+- **Mausrad** schaltet bei Gegnern mit mehreren Trefferpunkten (Riese) nur durch dessen Punkte (Kopf, Brust,
+  Knie …); bei einfachen Zielen durch die anderen Ziele in der Nähe. Danach Klick = Snap auf den neuen Punkt.
+
+**Auto-Clear nach Distanz**
+- Die Auswahl bleibt bestehen, solange man in der Nähe ist (außerhalb der Grapple-Reichweite grau, kein Seil).
+- Weiter als **3× Grapple-Reichweite (210 m, `lock_expire_range_mult`)** → Auswahl und Rahmen werden gelöscht.
+
+**High-Speed-Hit-Window**
+- Lock-Schlag-Reichweite wächst mit dem Tempo: 4 m im Stand, +0,03 m pro m/s, max. +2,5 m (≈ 6,1 m bei 70 m/s).
+- Der Lock-Treffer prüft die ganze Flugstrecke seit dem letzten Physik-Frame – bei 60+ m/s rauscht man nicht
+  mehr zwischen zwei Frames ohne Treffer am Ziel vorbei.
+- Kugel-Radius (+ max. 1 m) und Active-Phase (+ max. 0,08 s) wachsen ebenfalls mit dem Tempo.
+- Auto-Grab-Fang-Kegel wird mit dem Tempo breiter (+0,06° pro m/s, max. +5°).
+
+**Schadens-Skalierung (Adds vs. Boss)**
+- Rohschaden läuft durch einen weichen Deckel `cap · tanh(roh / cap)`: normale Treffer bleiben praktisch gleich,
+  Top-Treffer nähern sich dem Deckel.
+- Standard-Ziele: Deckel 285 (`hit_soft_cap`) → **Top-Sturzflug ≈ 95 % eines 300-HP-Dummys**, mittlerer Sturz ≈ 183.
+- Bosse liefern `get_hit_cap()`: Riese max. **15 % der Max-HP pro Treffer** (`max_hit_fraction`) → Top-Sturz 450 von
+  3000, mind. 7 perfekte Treffer, kein One-Hit-Kill.
+- Treffer-Info enthält jetzt `raw_damage` und `hit_cap`.
+
+**Tests**
+- Smoke-Test: 111 Checks (neu: freie Kamera mit Auswahl beim Schwingen, Snap + Abbruch, Halten löst, Auto-Clear
+  über 3× Reichweite, High-Speed-Vorbeiflug trifft, Dummy-/Boss-Schadensdeckel).
+
 ### 2026-11-15 – Dual-Mode-Targeting: Free-Flow Auto-Grab + echter Hard-Lock v0.6
 **Free-Flow Auto-Grab (ohne Hard-Lock)**
 - **LMB halten** greift automatisch den Gegner unter/nahe dem Fadenkreuz in Grapple-Reichweite und zieht heran,

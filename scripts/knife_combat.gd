@@ -22,6 +22,17 @@ extends Node
 ##     mal Steilheit, mal turbo_bonus im Turbo-Pull.
 ##   Das Info-Dictionary (speed_mult, plunge_mult, is_plunge, ...) ist die Basis fuer
 ##   spaetere Schwachstellen-/Ruestungs-Mechaniken.
+##
+## TREFFER-SKALIERUNG (scale_for_target): der Rohschaden geht durch einen weichen
+##   Deckel  Schaden = cap * tanh(roh / cap).  Kleine Treffer bleiben ~unveraendert,
+##   ein Top-Sturzflug landet knapp unter dem Deckel.
+##   - Standard-Ziele (Adds, Dummies): cap = hit_soft_cap (285 -> ~95 % eines 300-HP-Dummys).
+##   - Bosse definieren get_hit_cap() (z. B. Riese: 15 % der Max-HP) -> dicker Brocken,
+##     aber nie ein billiger One-Hit-Kill.
+##
+## HIT-WINDOW BEI HIGH-SPEED: Reichweite des Lock-Schlags und Kugel-Radius wachsen mit
+##   dem Tempo, die Active-Phase verlaengert sich, und der Lock-Treffer prueft die ganze
+##   Strecke seit dem letzten Physik-Frame (kein Durchtunneln bei 60+ m/s).
 
 signal slash_started(combo_index: int)
 signal hit_landed(target: Node, damage: float, info: Dictionary)
@@ -43,6 +54,9 @@ enum Phase { IDLE, WINDUP, ACTIVE, RECOVERY }
 @export var plunge_base := 2.0
 @export var plunge_step := 10.0
 @export var turbo_bonus := 1.25
+@export_subgroup("Treffer-Deckel")
+## Weicher Deckel pro Treffer fuer normale Ziele (Dummies/Adds).
+@export var hit_soft_cap := 285.0
 @export_group("Timing")
 @export var slash_windup := 0.04
 @export var slash_active := 0.12
@@ -52,8 +66,18 @@ enum Phase { IDLE, WINDUP, ACTIVE, RECOVERY }
 @export var hit_radius := 1.4
 @export var hit_reach := 1.7
 @export_flags_3d_physics var hit_mask := 1
-## Reichweite des Lock-Slashs (Spieler-Mitte bis Lock-Punkt).
+## Reichweite des Lock-Slashs (Spieler-Mitte bis Lock-Punkt) im Stand ...
 @export var lock_strike_reach := 4.0
+## ... plus Tempo * diese Zeit (s) – breiteres Fenster bei High-Speed ...
+@export var speed_reach_time := 0.03
+## ... maximal so viel zusaetzlich (m).
+@export var speed_reach_max := 2.5
+## Kugel-Radius waechst ebenfalls mit dem Tempo (m pro m/s, gedeckelt).
+@export var speed_radius_per_mps := 0.015
+@export var speed_radius_max := 1.0
+## Active-Phase verlaengert sich bei Tempo (s pro m/s, gedeckelt).
+@export var speed_active_per_mps := 0.0015
+@export var speed_active_max := 0.08
 
 var phase: Phase = Phase.IDLE
 var combo_index := -1
@@ -73,6 +97,8 @@ var _lock: Node3D = null
 ## damit ein Aufprall in den Frames danach den Bonus nicht verschluckt.
 var _swing_velocity := Vector3.ZERO
 var _swing_turbo := false
+var _active_time := 0.12
+var _prev_pos := Vector3.ZERO
 
 
 func _ready() -> void:
@@ -103,6 +129,9 @@ func _start_slash() -> void:
 	if _guardian:
 		_swing_velocity = _guardian.momentum_velocity()
 		_swing_turbo = _guardian.is_turbo()
+		_prev_pos = _guardian.global_position
+	var spd := _swing_velocity.length()
+	_active_time = slash_active + minf(spd * speed_active_per_mps, speed_active_max)
 	_queued = false
 	_already_hit.clear()
 	slash_started.emit(combo_index)
@@ -114,15 +143,17 @@ func _physics_process(delta: float) -> void:
 		swing_progress = -1.0
 		return
 	_t += delta
-	var total := slash_windup + slash_active + slash_recovery
+	var total := slash_windup + _active_time + slash_recovery
 	swing_progress = clampf(_t / total, 0.0, 1.0)
 	match phase:
 		Phase.WINDUP:
+			if _guardian:
+				_prev_pos = _guardian.global_position
 			if _t >= slash_windup:
 				phase = Phase.ACTIVE
 		Phase.ACTIVE:
 			_sweep_hits()
-			if _t >= slash_windup + slash_active:
+			if _t >= slash_windup + _active_time:
 				phase = Phase.RECOVERY
 				_since_last = 0.0
 		Phase.RECOVERY:
@@ -138,16 +169,22 @@ func _sweep_hits() -> void:
 		return
 	var mult := combo_multipliers[combo_index] if combo_index >= 0 else 1.0
 	var dir := _guardian.aim_forward()
-	# Lock-Slash: direkter Treffer auf den Lock-Punkt im Anflug
+	var pos := _guardian.global_position
+	var seg_from := _prev_pos
+	_prev_pos = pos
+	# Lock-Slash: direkter Treffer auf den Lock-Punkt im Anflug. Geprueft wird die ganze
+	# Strecke seit dem letzten Frame -> bei High-Speed kein Vorbeirauschen ohne Treffer.
 	if is_instance_valid(_lock):
-		var lp: Vector3 = _lock.get_lock_point() if _lock.has_method("get_lock_point") else _lock.global_position
-		dir = (lp - _guardian.global_position).normalized()
+		var lp: Vector3 = _guardian._lock_point_of(_lock)
+		dir = (lp - pos).normalized()
 		var receiver := GuardianController.hit_receiver_of(_lock)
-		if receiver and _guardian.global_position.distance_to(lp) <= lock_strike_reach \
+		var closest := Geometry3D.get_closest_point_to_segment(lp, seg_from, pos)
+		if receiver and closest.distance_to(lp) <= strike_reach() \
 				and not _already_hit.has(receiver.get_instance_id()):
 			_already_hit[receiver.get_instance_id()] = true
 			_deal(receiver, mult, dir, _lock)
-	var center := _guardian.global_position + Vector3.UP * 0.4 + dir * hit_reach
+	_shape.radius = hit_radius + minf(_swing_velocity.length() * speed_radius_per_mps, speed_radius_max)
+	var center := pos + Vector3.UP * 0.4 + dir * hit_reach
 	var params := PhysicsShapeQueryParameters3D.new()
 	params.shape = _shape
 	params.transform = Transform3D(Basis.IDENTITY, center)
@@ -166,6 +203,28 @@ func _sweep_hits() -> void:
 		var point: Node3D = _lock if is_instance_valid(_lock) \
 				and GuardianController.hit_receiver_of(_lock) == col else null
 		_deal(col as Node, mult, dir, point)
+
+
+## Reichweite des Lock-Schlags beim aktuellen Schlag-Momentum.
+func strike_reach() -> float:
+	return lock_strike_reach + minf(_swing_velocity.length() * speed_reach_time, speed_reach_max)
+
+
+## Weicher Treffer-Deckel: ~linear fuer kleine Werte, naehert sich `cap` an.
+static func soft_cap(raw: float, cap: float) -> float:
+	return cap * tanh(raw / maxf(cap, 0.001))
+
+
+## Deckel fuer ein Ziel: Bosse liefern get_hit_cap(), sonst hit_soft_cap.
+func hit_cap_for(target: Node) -> float:
+	if target != null and target.has_method("get_hit_cap"):
+		return target.get_hit_cap()
+	return hit_soft_cap
+
+
+## Rohschaden (inkl. Punkt-Faktor) -> endgueltiger Schaden am Ziel.
+func scale_for_target(raw: float, target: Node) -> float:
+	return soft_cap(raw, hit_cap_for(target))
 
 
 ## Momentum-Schaden aus Geschwindigkeit (siehe Kopfkommentar).
@@ -192,7 +251,9 @@ func compute_damage(vel: Vector3, combo_mult := 1.0, turbo := false) -> Dictiona
 func _deal(target: Node, mult: float, dir: Vector3, point: Node3D = null) -> void:
 	var info := compute_damage(_swing_velocity, mult, _swing_turbo)
 	var point_mult: float = point.damage_mult if point is LockPoint else 1.0
-	info.damage *= point_mult
+	info["raw_damage"] = info.damage * point_mult
+	info["hit_cap"] = hit_cap_for(target)
+	info.damage = scale_for_target(info.raw_damage, target)
 	info["point_mult"] = point_mult
 	info["point"] = (point as LockPoint).label if point is LockPoint else ""
 	last_hit = info

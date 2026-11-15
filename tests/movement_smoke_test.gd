@@ -38,6 +38,9 @@ func _run() -> void:
 	await _test_auto_grab_hold()
 	await _test_hard_lock_camera()
 	await _test_hard_lock_out_of_range()
+	await _test_free_camera_while_swinging()
+	await _test_high_speed_hit_window()
+	await _test_boss_damage_scaling()
 	await _test_rope_bending()
 	await _test_wallrun()
 
@@ -272,20 +275,24 @@ func _test_hip_alternation() -> void:
 
 
 func _test_hard_lock_toggle() -> void:
-	print("Hard-Lock (Mausrad-Klick / R3)")
+	print("Ziel-Auswahl (Mausrad-Klick / R3)")
 	var d := _dummy_near(Vector3(0, 1, -40))
 	await _place(Vector3(0, 1.2, -10.0), 0.0, -0.02)
 	await _frames(3)
-	_check(InputMap.has_action("hard_lock") and not InputMap.has_action("target_lock"), "Lock liegt auf eigener Taste (Tab entfernt)")
+	_check(InputMap.has_action("hard_lock") and not InputMap.has_action("target_lock"), "Auswahl liegt auf eigener Taste (Tab entfernt)")
 	await _action_event("hard_lock")
-	_check(g.hard_lock == d, "Mausrad-Klick rastet das Ziel ein")
+	_check(g.hard_lock == d, "Klick waehlt das Ziel")
 	g._yaw += 0.6
 	await _process_frames(2)
 	await _frames(3)
-	_check(g.hard_lock == d, "Lock haelt, auch wenn das Fadenkreuz wegschaut")
+	_check(g.hard_lock == d, "Auswahl haelt, auch wenn das Fadenkreuz wegschaut")
 	await _action_event("hard_lock")
-	_check(g.hard_lock == null, "erneuter Klick loest den Hard-Lock")
-
+	_check(g.hard_lock == d, "erneuter Klick behaelt die Auswahl (= neuer Snap)")
+	Input.action_press("hard_lock")
+	await _frames(int(g.lock_clear_hold * 60.0) + 6)
+	Input.action_release("hard_lock")
+	await _frames(2)
+	_check(g.hard_lock == null, "gedrueckt halten loest die Auswahl")
 
 func _test_lock_cycling_giant() -> void:
 	print("Ziel-Wechsel per Mausrad (Riese)")
@@ -306,14 +313,15 @@ func _test_lock_cycling_giant() -> void:
 	var first := g.hard_lock
 	_check(first is LockPoint, "erster Scroll rastet einen Punkt ein (%s)" % _lname(first))
 	var seen := {}
-	for i in cands.size():
+	for i in labels.size():
 		seen[_lname(g.hard_lock)] = true
 		await _action_event("lock_next")
-	_check(seen.size() == cands.size(), "Mausrad schaltet durch alle Punkte (%d)" % seen.size())
+	_check(seen.size() == labels.size(), "Mausrad schaltet durch alle Punkte des Riesen (%d)" % seen.size())
 	_check(g.hard_lock == first, "nach einer Runde wieder am Anfang (Wrap)")
 	await _action_event("lock_prev")
 	_check(g.hard_lock != first, "Mausrad hoch schaltet zurueck (%s)" % _lname(g.hard_lock))
-	await _action_event("hard_lock")
+	_check(g.hard_lock is LockPoint, "Wechsel bleibt bei den Punkten des gewaehlten Gegners")
+	g.release_hard_lock()
 
 
 func _test_lock_slash_loop() -> void:
@@ -346,7 +354,8 @@ func _test_lock_slash_loop() -> void:
 	var lh: Dictionary = g.knife.last_hit
 	_check(not lh.is_empty() and lh.is_plunge and lh.damage > 100.0,
 			"High-Speed-Sturzflug = High-Hit (%.0f Schaden, Plunge x%.1f)" % [lh.get("damage", 0.0), lh.get("plunge_mult", 0.0)])
-	await _action_event("hard_lock")
+	g.release_hard_lock()
+	_revive(d)
 	await _frames(120)
 
 
@@ -371,7 +380,7 @@ func _test_giant_point_hit() -> void:
 	await _frames(12)
 	_check(giant.hits_taken > hits, "Riese nimmt Schaden ueber den Lock-Punkt")
 	_check(g.knife.last_hit.get("point", "") == "Brust", "Treffer wird dem Punkt zugeordnet (%s)" % g.knife.last_hit.get("point", "-"))
-	await _action_event("hard_lock")
+	g.release_hard_lock()
 	await _frames(90)
 
 
@@ -451,77 +460,83 @@ func _test_auto_grab_hold() -> void:
 
 
 func _test_hard_lock_camera() -> void:
-	print("Hard-Lock-Kamera")
+	print("Freie Kamera + Kamera-Snap-Impuls")
 	var d := _dummy_near(Vector3(0, 1, -40))
 	var hud = arena.get_node("HUD")
-	_check(hud.get("_lock") == null and hud.reticle is LockReticle, "Lock-UI = reiner Rahmen ohne Text-Label")
+	_check(hud.get("_lock") == null and hud.reticle is LockReticle, "Auswahl-UI = reiner Rahmen ohne Text-Label")
 	await _place(Vector3(0, 1.2, -10.0), 0.0, -0.02)
 	await _frames(3)
 	await _action_event("hard_lock")
-	_check(g.hard_lock == d, "Ziel eingerastet")
-	# Freies Umsehen wird ueberschrieben: Kamera dreht zurueck aufs Ziel.
-	g._yaw += 0.9
-	g._pitch += 0.4
-	Input.action_press("look_right")
-	await _process_frames(90)
-	Input.action_release("look_right")
+	await _process_frames(40)
+	_check(g.hard_lock == d, "Ziel gewaehlt")
 	var err := _cam_error_deg(d.get_lock_point())
-	_check(err < 1.0, "Kamera bleibt auf das Ziel gerichtet (%.2f°)" % err)
+	_check(err < 1.0 and not g.is_snapping(), "Snap richtet die Kamera aufs Ziel und endet (%.2f°)" % err)
 	_check(g.hard_lock_in_range() and hud.reticle.visible and hud.reticle.in_range
 			and hud.reticle.current_color() == LockReticle.COL_IN_RANGE, "Rahmen farbig in Reichweite")
-	var center: Vector2 = g.get_viewport().get_visible_rect().size * 0.5
 	var proj := g.camera.unproject_position(d.get_node("Shape").global_position)
 	_check(hud.reticle.center.distance_to(proj) < 0.5, "Rahmen sitzt exakt auf der Hitbox-Mitte")
+	var center: Vector2 = g.get_viewport().get_visible_rect().size * 0.5
 	_check(hud.reticle.center.distance_to(center) < 6.0,
-			"Hitbox liegt unterm Fadenkreuz (%.1f px)" % hud.reticle.center.distance_to(center))
-	# Ziel-Wechsel am Riesen: Kamera folgt dem neuen Punkt
-	var giant: TrainingGiant = arena.get_node("TrainingGiant")
+			"nach dem Snap liegt die Hitbox unterm Fadenkreuz (%.1f px)" % hud.reticle.center.distance_to(center))
+	# Danach ist die Kamera frei: Umsehen wird NICHT zurueckgezogen.
+	g._yaw += 0.9
+	await _process_frames(40)
+	err = _cam_error_deg(d.get_lock_point())
+	_check(err > 30.0 and g.hard_lock == d, "Kamera bleibt frei, Auswahl bleibt (%.0f° weg vom Ziel)" % err)
+	var yaw0 := g._yaw
+	Input.action_press("look_right")
+	await _process_frames(20)
+	Input.action_release("look_right")
+	_check(absf(g._yaw - yaw0) > 0.2, "Stick dreht die Kamera trotz Auswahl")
+	# Umsehen bricht einen laufenden Snap sofort ab
 	await _action_event("hard_lock")
+	Input.action_press("look_right")
+	await _process_frames(3)
+	Input.action_release("look_right")
+	_check(not g.is_snapping(), "Umsehen bricht den Snap ab (Spieler hat Vorrang)")
+	await _action_event("hard_lock")
+	await _process_frames(40)
+	_check(_cam_error_deg(d.get_lock_point()) < 1.0, "erneuter Klick = neuer Snap")
+	g.release_hard_lock()
+	# Trefferpunkt-Wechsel am Riesen + Snap auf den neuen Punkt
+	var giant: TrainingGiant = arena.get_node("TrainingGiant")
 	await _place(Vector3(0, 6.0, -62.0), 0.0, 0.0)
 	_aim_at(giant.global_position + Vector3(0, 9.5, 1.3))
 	await _process_frames(2)
 	await _frames(3)
-	await _action_event("lock_next")
+	await _action_event("hard_lock")
 	var a := g.hard_lock
 	await _action_event("lock_next")
 	var b := g.hard_lock
-	await _process_frames(90)
-	err = _cam_error_deg(g._lock_point_of(b))
-	_check(a != b and b is LockPoint and err < 1.0,
-			"Mausrad wechselt Punkt, Kamera folgt (%s -> %s, %.2f°)" % [_lname(a), _lname(b), err])
-	var order := []
-	for i in 6:
-		order.append(_lname(g.hard_lock))
-		await _action_event("lock_next")
-		await _process_frames(20)
-	var uniq := {}
-	for n in order:
-		uniq[n] = true
-	_check(uniq.size() >= 4, "Wechsel bleibt stabil trotz mitdrehender Kamera (%s)" % ", ".join(order))
 	await _action_event("hard_lock")
-
+	for i in 40:  # Messung direkt bei Snap-Ende (Spieler faellt danach weiter)
+		if not g.is_snapping():
+			break
+		await process_frame
+	await process_frame
+	err = _cam_error_deg(g._lock_point_of(b))
+	_check(a is LockPoint and b is LockPoint and a != b and g.hard_lock == b and err < 1.0,
+			"Mausrad wechselt Punkt, Klick snappt darauf (%s -> %s, %.2f°)" % [_lname(a), _lname(b), err])
+	g.release_hard_lock()
 
 func _test_hard_lock_out_of_range() -> void:
-	print("Hard-Lock ausserhalb der Reichweite")
+	print("Auswahl ausserhalb der Reichweite / Auto-Clear")
 	var d := _dummy_near(Vector3(0, 1, -40))
 	var hud = arena.get_node("HUD")
 	await _place(Vector3(0, 1.2, -10.0), 0.0, -0.02)
 	await _frames(3)
 	await _action_event("hard_lock")
-	_check(g.hard_lock == d, "Ziel eingerastet")
-	await _place(Vector3(0, 1.2, 42.0), 0.0, 0.0)  # 82 m entfernt
-	await _process_frames(90)
-	await _frames(5)
+	_check(g.hard_lock == d, "Ziel gewaehlt")
+	await _place(Vector3(0, 1.2, 42.0), PI, 0.0)  # 82 m entfernt, Blick zum Ziel
+	await _process_frames(4)
+	await _frames(3)
 	var dist := g.global_position.distance_to(d.get_lock_point())
-	_check(g.hard_lock == d, "Lock bleibt bei %.0f m (Reichweite %.0f m)" % [dist, g.grapple_range])
+	_check(g.hard_lock == d, "Auswahl bleibt bei %.0f m (Reichweite %.0f m)" % [dist, g.grapple_range])
 	_check(not g.hard_lock_in_range() and hud.reticle.visible and not hud.reticle.in_range
 			and hud.reticle.current_color() == LockReticle.COL_OUT_OF_RANGE, "Rahmen grau ausserhalb der Reichweite")
-	var err := _cam_error_deg(d.get_lock_point())
-	_check(err < 1.0, "Kamera bleibt auch ausser Reichweite auf dem Ziel (%.2f°)" % err)
 	Input.action_press("attack")
 	await _frames(3)
 	_check(g.combat_hook() == null, "kein Seil ausserhalb der Reichweite")
-	# zurueck in Reichweite, LMB noch gehalten -> Seil greift
 	g.global_position = Vector3(0, 1.2, -12.0)
 	g.reset_physics_interpolation()
 	await _process_frames(2)
@@ -530,10 +545,122 @@ func _test_hard_lock_out_of_range() -> void:
 	_check(ch != null and ch.target == d and hud.reticle.in_range, "zurueck in Reichweite: Rahmen farbig, Seil greift")
 	Input.action_release("attack")
 	await _frames(10)
+	# knapp unter 3x Reichweite: bleibt
+	var lim := g.lock_expire_range()
+	await _place(d.get_lock_point() + Vector3(0, 0.2, lim - 5.0), PI, 0.0)
+	await _frames(2)
+	_check(g.hard_lock == d, "bei %.0f m (< 3x Reichweite) bleibt die Auswahl" % (lim - 5.0))
+	# ueber 3x Reichweite: Auswahl + Rahmen weg
+	g.global_position = d.get_lock_point() + Vector3(0, 0.2, lim + 5.0)
+	g.reset_physics_interpolation()
+	await _frames(2)
+	await _process_frames(2)
+	_check(g.hard_lock == null and not hud.reticle.visible,
+			"ueber 3x Reichweite (%.0f m) wird die Auswahl geloescht, Rahmen weg" % (lim + 5.0))
+	await _place(Vector3(0, 1.2, -10.0), 0.0, 0.0)
+	await _frames(30)
+
+
+func _test_free_camera_while_swinging() -> void:
+	print("Freie Kamera beim Schwingen (mit Auswahl)")
+	var d := _dummy_near(Vector3(0, 1, -40))
+	await _place(Vector3(0, 1.2, -10.0), 0.0, -0.02)
+	await _frames(3)
 	await _action_event("hard_lock")
-	_check(g.hard_lock == null, "Klick loest den Lock")
+	_check(g.hard_lock == d, "Ziel gewaehlt")
+	await _place(Vector3(0, 1.2, 0), 0.0, 0.0)
+	var t := _closest_tower()
+	_aim_at(t.pos + Vector3(0, 6, 0))
+	await _process_frames(2)
+	await _frames(2)
+	Input.action_press("grapple")
+	await _frames(10)
+	var hooked := g.any_hook_active()
+	var yaw0 := g._yaw
+	Input.action_press("look_left")
+	for i in 40:
+		await physics_frame
+		await process_frame
+	Input.action_release("look_left")
+	_check(hooked and g.any_hook_active(), "haengt am Seil")
+	_check(absf(angle_difference(yaw0, g._yaw)) > 0.4 and g.hard_lock == d,
+			"Kamera dreht beim Schwingen frei trotz Auswahl (%.2f rad)" % absf(angle_difference(yaw0, g._yaw)))
+	Input.action_release("grapple")
+	await _frames(20)
+	g.release_hard_lock()
 	await _frames(60)
 
+
+func _test_high_speed_hit_window() -> void:
+	print("High-Speed Hit-Window")
+	var d := _dummy_near(Vector3(0, 1, -40))
+	_revive(d)
+	var k := g.knife
+	# Vorbeiflug mit 70 m/s, 4.6 m seitlich vom Ziel (ueber der Stand-Reichweite von 4 m).
+	await _place(Vector3(4.6, 1.3, -30.0), 0.0, 0.0)
+	g.hard_lock = d
+	var hits := d.hits_taken
+	for i in 30:
+		g.velocity = Vector3(0, 0, -70)
+		if i == 4:
+			k.request_slash(d)
+		await physics_frame
+	_check(d.hits_taken > hits, "Vorbeiflug mit 70 m/s trifft (Reichweite %.1f m statt %.1f m)"
+			% [k.strike_reach(), k.lock_strike_reach])
+	# Ueberflug 5.4 m ueber dem Ziel mit 75 m/s (1.25 m pro Frame, Strecken-Pruefung).
+	_revive(d)
+	await _place(Vector3(0.0, 6.4, -30.0), 0.0, 0.0)
+	g.hard_lock = d
+	hits = d.hits_taken
+	for i in 30:
+		g.velocity = Vector3(0, 0, -75)
+		if i == 2:
+			k.request_slash(d)
+		await physics_frame
+	_check(d.hits_taken > hits, "Ueberflug mit 75 m/s trifft (Strecken-Pruefung + Tempo-Reichweite)")
+	g.release_hard_lock()
+	await _place(Vector3(0, 1.2, -10.0), 0.0, 0.0)
+	await _frames(20)
+	# Ohne Tempo bleibt das Fenster eng
+	k._swing_velocity = Vector3.ZERO
+	_check(absf(k.strike_reach() - k.lock_strike_reach) < 0.01, "im Stand normale Reichweite (%.1f m)" % k.strike_reach())
+
+
+func _test_boss_damage_scaling() -> void:
+	print("Schadens-Skalierung (Adds vs. Boss)")
+	var k := g.knife
+	var d := _dummy_near(Vector3(0, 1, -40))
+	var giant: TrainingGiant = arena.get_node("TrainingGiant")
+	var top: Dictionary = k.compute_damage(Vector3(0, -74, -8), k.combo_multipliers[0], true)
+	var mid: Dictionary = k.compute_damage(Vector3(0, -40, -4))
+	var flat: Dictionary = k.compute_damage(Vector3(0, 0, -40))
+	var top_dummy := k.scale_for_target(top.damage, d)
+	var top_giant := k.scale_for_target(top.damage, giant)
+	print("    Top-Sturz roh %.0f -> Dummy %.0f (%.0f %%) | Riese %.0f (%.1f %% von %.0f)"
+			% [top.damage, top_dummy, top_dummy / d.max_hp * 100.0, top_giant,
+			top_giant / giant.max_hp * 100.0, giant.max_hp])
+	_check(top_dummy >= d.max_hp * 0.9 and top_dummy <= d.max_hp,
+			"Top-Sturzflug = 90-100 %% eines Dummys (%.0f / %.0f)" % [top_dummy, d.max_hp])
+	_check(top_giant > top_dummy and top_giant <= giant.max_hp * 0.15 + 0.5,
+			"Boss: dicker Brocken, aber <= 15 %% der HP (%.0f)" % top_giant)
+	_check(giant.max_hp / top_giant >= 6.0, "kein One-Hit-Kill am Boss (min. %d Top-Treffer)" % ceili(giant.max_hp / top_giant))
+	_check(absf(k.scale_for_target(k.min_damage, d) - k.min_damage) < 0.01
+			and absf(k.scale_for_target(flat.damage, d) - flat.damage) < 0.5,
+			"kleine/normale Treffer bleiben unveraendert")
+	var mid_dummy := k.scale_for_target(mid.damage, d)
+	_check(mid_dummy > mid.damage * 0.6 and mid_dummy < top_dummy, "mittlerer Sturz bleibt stark (%.0f)" % mid_dummy)
+	# Echter Treffer am Riesen: Schaden ist gedeckelt
+	var hp0 := giant.hp
+	giant.take_hit(0.0, Vector3.ZERO, null)
+	var chest: LockPoint = giant.find_child("LP_Brust", true, false)
+	k._swing_velocity = Vector3(0, -74, -8)
+	k._swing_turbo = true
+	k.combo_index = 0
+	k._deal(giant, 1.0, Vector3.DOWN, chest)
+	var dealt := hp0 - giant.hp
+	_check(dealt > 0.0 and dealt <= giant.max_hp * 0.15 + 0.5,
+			"Treffer am Riesen gedeckelt (%.0f Schaden, roh %.0f)" % [dealt, k.last_hit.get("raw_damage", 0.0)])
+	await _frames(10)
 
 func _test_rope_bending() -> void:
 	print("Seil-Bending")

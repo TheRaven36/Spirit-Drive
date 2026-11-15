@@ -3,9 +3,9 @@ extends CanvasLayer
 ## Der Auto-Aim arbeitet unsichtbar im Hintergrund – Seil und Trefferpunkt
 ## sieht der Spieler direkt in der Welt. Das Fadenkreuz faerbt sich nur dezent:
 ## gruen = Seil-Ziel, orange = LMB wuerde einen Gegner greifen (Auto-Grab).
-## Nur bei aktivem Hard-Lock (Mausrad-Klick) markiert ein Rahmen (LockReticle,
-## ohne Text) exakt den eingerasteten Punkt: farbig = in Grapple-Reichweite,
-## grau = ausserhalb (Lock bleibt) – sonst bleibt das Bild clean.
+## Nur bei gewaehltem Ziel (Mausrad-Klick) markiert ein Rahmen (LockReticle,
+## ohne Text) exakt den gewaehlten Punkt: farbig = in Grapple-Reichweite,
+## grau = ausserhalb. Ab 3x Reichweite verschwindet die Auswahl samt Rahmen.
 
 @export var guardian_path: NodePath
 
@@ -45,8 +45,8 @@ func _ready() -> void:
 	var help := _make_label(
 			"WASD Laufen | Shift Sprint | Space Sprung | P Kamera | RMB halten Seil (Doppel-Tap = 2. Haken)\n"
 			+ "Am Seil: W Turbo, S Bremse, A/D seitlich | LMB halten = Gegner unterm Fadenkreuz greifen, "
-			+ "loslassen = Schlag\nMausrad-Klick Hard-Lock (Kamera rastet ein, grau = ausser Reichweite), "
-			+ "Mausrad Ziel-Wechsel | R Reset", 14)
+			+ "loslassen = Schlag\nMausrad-Klick Ziel waehlen + Kamera-Snap (halten = loesen), "
+			+ "Mausrad Trefferpunkt-Wechsel | R Reset", 14)
 	help.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	help.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT)
 	help.position += Vector2(16, -74)
