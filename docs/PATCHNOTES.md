@@ -4,6 +4,25 @@ Neueste Einträge immer oben.
 
 ## Unreleased (Robin-Branch)
 
+### 2026-11-15 – Dash entfernt, kontextsensitive Shift-Taste
+**Entfernt**
+- **Dash** restlos aus Code, Input-Map (Q / Strg / Xbox B) und HUD entfernt. Q, Strg und B sind frei.
+
+**Neu / Geändert**
+- **Shift kontextsensitiv:**
+  - Am Boden: Sprint. Sprint-Speed **17 → 24 m/s**, Boden-Beschleunigung 80 → 110 („richtiges Rennen“).
+  - In der Luft mit aktivem Seil: **Turbo-Einzug** – 1,5× der neuen, sanften Basis.
+- **Sanfter Basis-Einzug:** Zug-Beschleunigung und -Höchstgeschwindigkeit des Grapples laufen jetzt mit
+  0,5× (`reel_base_mult`), Turbo = 1,5× davon (`reel_turbo_mult`). Gilt auch fürs Einholen am hängenden Seil
+  (Space sanft, Shift Turbo).
+- **Zielführung im Einzug** (`pull_homing`): seitliches Driften wird gedämpft, damit man trotz sanfterem Zug
+  nicht unter dem Ziel durchrauscht und es umkreist.
+- **Ankunft beim Vorbeifliegen** (`pull_arrive_window`): Rebound bzw. Sturzangriff lösen auch aus, wenn man den
+  nächsten Punkt zum Ziel passiert hat (nicht mehr nur innerhalb von 3,5 m).
+- Fix: Nach dem Abwickeln eines Seil-Knicks löste der Rebound zu früh aus (Nähe-Wert wird bei Pivot-Wechsel
+  zurückgesetzt).
+- HUD zeigt `TURBO` neben dem State. Smoke-Test: 46 Checks.
+
 ### 2026-11-15 – Dual-Hip-Grapple v0.3 (Slingshot & Tactical Nest)
 **Neu**
 - **Dual-Hip-Grapple auf RMB / LT:** zwei Werfer an linker und rechter Hüfte.

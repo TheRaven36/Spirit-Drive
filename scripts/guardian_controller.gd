@@ -2,7 +2,8 @@ class_name GuardianController
 extends CharacterBody3D
 ## Guardian – High-Speed-Controller.
 ##
-## Movement: Laufen / Sprint / Air-Control / Dash / Wall-Run.
+## Movement: Laufen / Sprint / Air-Control / Wall-Run.
+## Shift:    kontextsensitiv – am Boden Sprint, am Seil in der Luft Turbo-Einzug.
 ## Seile:    Dual-Hip-Grapple auf RMB / LT (zwei Werfer an linker + rechter Huefte).
 ##           - Klick/Halten: feuert den naechsten Huefthaken (abwechselnd L/R).
 ##             Auf Gegner: Sturzangriff von oben.
@@ -20,17 +21,17 @@ extends CharacterBody3D
 signal state_changed(new_state: State)
 signal camera_mode_changed(first_person: bool)
 
-enum State { NORMAL, DASH, HOOKED, WALLRUN }
+enum State { NORMAL, HOOKED, WALLRUN }
 enum AimKind { NONE, POINT, ENEMY }
 enum DualMode { NONE, SLINGSHOT, NEST }
 
 # --- Ground ---------------------------------------------------------------
 @export_group("Ground")
 @export var run_speed := 9.0
-@export var sprint_speed := 17.0
-@export var ground_accel := 80.0
+@export var sprint_speed := 24.0
+@export var ground_accel := 110.0
 @export var ground_friction := 10.0
-## Wie schnell Ueber-Speed (aus Dash/Seil) am Boden abgebaut wird.
+## Wie schnell Ueber-Speed (aus Seil/Slingshot) am Boden abgebaut wird.
 @export var overspeed_decay := 18.0
 
 # --- Air ------------------------------------------------------------------
@@ -44,14 +45,6 @@ enum DualMode { NONE, SLINGSHOT, NEST }
 @export var air_control_speed := 15.0
 @export var air_drag := 0.04
 @export var terminal_speed := 75.0
-
-# --- Dash -----------------------------------------------------------------
-@export_group("Dash")
-@export var dash_speed := 32.0
-@export var dash_time := 0.15
-@export var dash_cooldown := 0.2
-@export var dash_charges_max := 2
-@export var dash_exit_keep := 0.65
 
 # --- Seile allgemein ------------------------------------------------------
 @export_group("Rope")
@@ -71,6 +64,15 @@ enum DualMode { NONE, SLINGSHOT, NEST }
 @export var combat_pull_impulse := 12.0
 @export var combat_pull_max_speed := 48.0
 @export var combat_reel_accel := 45.0
+## Basis-Einzug ist bewusst sanft (Anteil der Werte oben) ...
+@export var reel_base_mult := 0.5
+## ... Shift in der Luft am Seil = Turbo-Einzug (Faktor auf die Basis).
+@export var reel_turbo_mult := 1.5
+## Zielfuehrung im Einzug: daempft seitliche Geschwindigkeit -> kein Umkreisen.
+@export var pull_homing := 3.0
+## Faellt der Abstand zum Ziel unter diesen Wert und steigt dann wieder,
+## gilt das Ziel als erreicht (Rebound bzw. Sturzangriff loest aus).
+@export var pull_arrive_window := 10.0
 @export var dive_height := 4.0
 @export var dive_speed := 42.0
 @export var dive_hit_radius := 2.4
@@ -141,7 +143,6 @@ const MAX_ROPE_SEGMENTS := 32
 @onready var knife_fp: Node3D = $CameraRig/Pitch/SpringArm3D/Camera3D/ViewKnife
 
 var state: State = State.NORMAL
-var dash_charges := 2
 var first_person := false
 
 ## Auto-Aim-Ergebnis (unsichtbar, nur fuer den Grapple).
@@ -166,10 +167,6 @@ var _pitch := -0.15
 var _cam_blend := 0.0
 var _coyote_t := 0.0
 var _jump_buffer_t := 0.0
-var _dash_t := 0.0
-var _dash_cd := 0.0
-var _dash_dir := Vector3.FORWARD
-var _dash_speed_now := 0.0
 var _wall_normal := Vector3.ZERO
 var _wallrun_t := 0.0
 var _wall_lost_t := 0.0
@@ -186,7 +183,6 @@ var _nest_point := Vector3.ZERO
 func _ready() -> void:
 	GuardianInput.ensure_actions()
 	_spawn = global_position
-	dash_charges = dash_charges_max
 	cam_rig.top_level = true
 	cam_rig.physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
 	spring_arm.add_excluded_object(get_rid())
@@ -271,15 +267,11 @@ func _physics_process(delta: float) -> void:
 	_handle_hook_input(delta)
 	if Input.is_action_just_pressed("attack"):
 		knife.request_slash()
-	if Input.is_action_just_pressed("dash"):
-		_try_dash(wish)
 	_refresh_state()
 
 	match state:
 		State.NORMAL:
 			_process_normal(wish, delta)
-		State.DASH:
-			_process_dash(delta)
 		State.HOOKED:
 			_process_hooked(wish, delta)
 		State.WALLRUN:
@@ -298,7 +290,6 @@ func _physics_process(delta: float) -> void:
 func _tick_timers(delta: float) -> void:
 	_coyote_t -= delta
 	_jump_buffer_t -= delta
-	_dash_cd -= delta
 	_wallrun_lockout -= delta
 
 
@@ -360,20 +351,6 @@ func _try_ground_jump() -> void:
 		_coyote_t = 0.0
 
 
-func _process_dash(delta: float) -> void:
-	_dash_t -= delta
-	velocity = _dash_dir * _dash_speed_now
-	if _jump_buffer_t > 0.0 and (is_on_floor() or _coyote_t > 0.0):
-		velocity.y = jump_velocity
-		_jump_buffer_t = 0.0
-		_coyote_t = 0.0
-		_set_state(State.NORMAL)
-		return
-	if _dash_t <= 0.0:
-		velocity = _dash_dir * maxf(_dash_speed_now * dash_exit_keep, run_speed)
-		_set_state(State.NORMAL)
-
-
 func _process_wallrun(wish: Vector3, delta: float) -> void:
 	_wallrun_t += delta
 	var n := _wall_normal
@@ -392,7 +369,6 @@ func _process_wallrun(wish: Vector3, delta: float) -> void:
 		velocity = dir * speed + n * wall_jump_push
 		velocity.y = wall_jump_up
 		_wallrun_lockout = 0.3
-		dash_charges = maxi(dash_charges, 1)
 		_set_state(State.NORMAL)
 		return
 	if _wallrun_t > wallrun_max_time or wish.dot(n) > 0.5:
@@ -403,7 +379,6 @@ func _process_wallrun(wish: Vector3, delta: float) -> void:
 func _post_move(wish: Vector3, delta: float) -> void:
 	if is_on_floor():
 		_coyote_t = coyote_time
-		dash_charges = dash_charges_max
 		if state == State.WALLRUN:
 			_set_state(State.NORMAL)
 
@@ -437,30 +412,6 @@ func _check_wallrun_start(wish: Vector3) -> void:
 	_wall_lost_t = 0.0
 	velocity.y = maxf(velocity.y, 3.0)
 	_set_state(State.WALLRUN)
-
-
-func _try_dash(wish: Vector3) -> void:
-	if _dash_cd > 0.0 or dash_charges <= 0:
-		return
-	var dir := wish.normalized()
-	if dir == Vector3.ZERO:
-		dir = aim_forward()
-		if is_on_floor():
-			dir.y = 0.0
-	dir = dir.normalized()
-	dash_charges -= 1
-	_dash_cd = dash_cooldown
-
-	if any_hook_active():
-		# Gas-Stoss am Seil: Impuls, Seile bleiben aktiv.
-		velocity += dir * dash_speed * 0.6
-		return
-
-	var carry := maxf(velocity.dot(dir), 0.0)
-	_dash_dir = dir
-	_dash_speed_now = maxf(dash_speed, carry + dash_speed * 0.35)
-	_dash_t = dash_time
-	_set_state(State.DASH)
 
 
 # =========================================================================
@@ -514,7 +465,6 @@ func _fire_primary_hook() -> void:
 	velocity += dir * combat_pull_impulse
 	if is_on_floor():
 		velocity.y = maxf(velocity.y, 6.0)
-	dash_charges = maxi(dash_charges, 1)
 	_refresh_state()
 
 
@@ -647,7 +597,18 @@ func _rope_constraint(h: GrappleHook, delta: float) -> void:
 		velocity += dir * minf(dist - h.rope_length, 2.0) * rope_stiffness * delta
 
 
+## Shift in der Luft mit aktivem Seil -> Turbo-Einzug.
+func is_turbo() -> bool:
+	return Input.is_action_pressed("sprint") and any_hook_active() and not is_on_floor()
+
+
+## Aktueller Einzugs-Faktor: sanfte Basis, mit Shift-Turbo 1.5x davon.
+func reel_mult() -> float:
+	return reel_base_mult * (reel_turbo_mult if is_turbo() else 1.0)
+
+
 func _grapple_forces(h: GrappleHook, dir: Vector3, dist: float, delta: float) -> void:
+	var m := reel_mult()
 	match h.phase:
 		GrappleHook.Phase.PULL:
 			var goal := h.pivot()
@@ -656,10 +617,14 @@ func _grapple_forces(h: GrappleHook, dir: Vector3, dist: float, delta: float) ->
 			var to_goal := goal - global_position
 			var gdist := to_goal.length()
 			var gdir := to_goal / maxf(gdist, 0.001)
-			if velocity.dot(gdir) < combat_pull_max_speed:
-				velocity += gdir * combat_pull_accel * delta
+			if velocity.dot(gdir) < combat_pull_max_speed * m:
+				velocity += gdir * combat_pull_accel * m * delta
+			var along := gdir * velocity.dot(gdir)
+			velocity = along + (velocity - along) * (1.0 - minf(pull_homing * delta, 1.0))
 			h.rope_length = minf(h.rope_length, dist)
-			if not h.has_bends() and gdist < rebound_radius:
+			var passed := h.closest < pull_arrive_window and gdist > h.closest + 0.5
+			h.closest = minf(h.closest, gdist)
+			if not h.has_bends() and (gdist < rebound_radius or passed):
 				if is_instance_valid(h.target):
 					h.set_phase(GrappleHook.Phase.DIVE)
 				else:
@@ -673,9 +638,10 @@ func _grapple_forces(h: GrappleHook, dir: Vector3, dist: float, delta: float) ->
 			if to_t.length() < dive_hit_radius:
 				_end_dive(h, h.target)
 		GrappleHook.Phase.TETHER:
-			if Input.is_action_pressed("jump"):
-				h.rope_length = maxf(h.rope_length - reel_speed * delta, rope_min_length)
-				velocity += dir * combat_reel_accel * delta
+			# Einholen am haengenden Seil: Space (sanft) oder Shift (Turbo).
+			if Input.is_action_pressed("jump") or is_turbo():
+				h.rope_length = maxf(h.rope_length - reel_speed * m * delta, rope_min_length)
+				velocity += dir * combat_reel_accel * m * delta
 
 
 func _rebound(h: GrappleHook, dist: float) -> void:

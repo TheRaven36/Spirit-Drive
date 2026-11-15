@@ -24,6 +24,7 @@ func _run() -> void:
 	await _test_aim_assist()
 	await _test_combat_dive()
 	await _test_combat_grapple_point()
+	await _test_turbo_reel()
 	await _test_rope_bending()
 	await _test_hip_alternation()
 	await _test_slingshot()
@@ -43,10 +44,9 @@ func _test_basic_movement() -> void:
 	await _frames(60)
 	var hs := Vector2(g.velocity.x, g.velocity.z).length()
 	_check(hs > g.sprint_speed * 0.9, "Sprint erreicht Zielspeed (%.1f)" % hs)
-	await _tap("dash")
-	_check(g.state == GuardianController.State.DASH, "Dash (Strg) startet")
-	await _frames(20)
-	_check(g.state == GuardianController.State.NORMAL, "Dash endet")
+	_check(hs >= 23.0, "Sprint ist das neue 'richtige Rennen' (>= 23 m/s)")
+	_check(not InputMap.has_action("dash"), "Dash-Action existiert nicht mehr")
+	_check(not g.is_turbo(), "Shift am Boden = Sprint, kein Turbo")
 	_release_all()
 	await _frames(60)
 	await _tap("jump", 3)
@@ -178,6 +178,39 @@ func _test_combat_grapple_point() -> void:
 	_check(not h.active and g.velocity.length() > 3.0,
 			"Release behaelt Momentum (%.1f)" % g.velocity.length())
 	await _frames(120)
+
+
+func _test_turbo_reel() -> void:
+	print("Shift am Seil: Turbo-Einzug")
+	var results := []
+	for turbo in [false, true]:
+		await _place(Vector3(0, 1.2, 0), 0.0, 0.0)
+		var t := _closest_tower()
+		_aim_at(t.pos + Vector3(0, t.size.y * 0.3, 0))
+		await _process_frames(2)
+		await _frames(3)
+		var a := g.aim_point
+		var d0 := g.global_position.distance_to(a)
+		if turbo:
+			Input.action_press("sprint")
+		Input.action_press("grapple")
+		var turbo_seen := false
+		for i in 40:
+			await physics_frame
+			turbo_seen = turbo_seen or g.is_turbo()
+		var approach := g.velocity.dot((a - g.global_position).normalized())
+		results.append({"covered": d0 - g.global_position.distance_to(a), "turbo": turbo_seen,
+				"speed": approach})
+		Input.action_release("grapple")
+		Input.action_release("sprint")
+		await _frames(int(g.double_tap_window * 60.0) + 3)
+		await _frames(60)
+	_check(not results[0].turbo and results[1].turbo, "Turbo nur mit Shift in der Luft am Seil")
+	var ratio: float = results[1].covered / maxf(results[0].covered, 0.01)
+	_check(ratio > 1.25, "Turbo zieht schneller ein (%.1f m vs %.1f m, x%.2f)" % [
+			results[1].covered, results[0].covered, ratio])
+	_check(results[0].speed <= g.combat_pull_max_speed * g.reel_base_mult + 3.0,
+			"Basis-Einzug ist sanft (%.1f m/s Richtung Anker)" % results[0].speed)
 
 
 func _test_rope_bending() -> void:
@@ -403,7 +436,7 @@ func _tap(action: String, frames := 2) -> void:
 
 func _release_all() -> void:
 	for a in ["move_forward", "move_back", "move_left", "move_right", "sprint", "jump",
-			"attack", "grapple", "dash"]:
+			"attack", "grapple"]:
 		Input.action_release(a)
 
 

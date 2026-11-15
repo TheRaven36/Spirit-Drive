@@ -5,7 +5,7 @@ extends CanvasLayer
 
 @export var guardian_path: NodePath
 
-const STATE_NAMES := ["NORMAL", "DASH", "HOOKED", "WALLRUN"]
+const STATE_NAMES := ["NORMAL", "HOOKED", "WALLRUN"]
 const COL_POINT := Color(0.3, 1.0, 0.5, 0.9)
 const COL_ENEMY := Color(1.0, 0.55, 0.2, 0.9)
 const COL_IDLE := Color(1, 1, 1, 0.5)
@@ -34,7 +34,7 @@ func _ready() -> void:
 	_hooks.position.y -= 90
 
 	var help := _make_label(
-			"WASD Laufen | Shift Sprint | Space Sprung / am Seil einholen | Q/Strg Dash | P Kamera\n"
+			"WASD Laufen | Shift Sprint (am Seil: Turbo-Einzug) | Space Sprung / am Seil einholen | P Kamera\n"
 			+ "LMB Messer | RMB halten Grapple | RMB Doppel-Tap = 2. Haken (Slingshot / Nest) | R Reset", 14)
 	help.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	help.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT)
@@ -74,9 +74,8 @@ func _process(_delta: float) -> void:
 
 	var v := g.velocity
 	var horiz := Vector2(v.x, v.z).length()
-	_info.text = "Speed  %5.1f m/s  (horiz %5.1f)\nState  %s\nDash   %d/%d\nCam    %s\nFPS    %d" % [
-		v.length(), horiz, STATE_NAMES[g.state],
-		g.dash_charges, g.dash_charges_max,
+	_info.text = "Speed  %5.1f m/s  (horiz %5.1f)\nState  %s%s\nCam    %s\nFPS    %d" % [
+		v.length(), horiz, STATE_NAMES[g.state], "  TURBO" if g.is_turbo() else "",
 		"First-Person" if g.first_person else "Third-Person",
 		Engine.get_frames_per_second(),
 	]

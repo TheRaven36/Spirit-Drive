@@ -29,6 +29,8 @@ var bends: Array[Vector3] = []
 var rope_length := 0.0      # freie Laenge vom Pivot zum Spieler
 var attach_height := 0.0
 var phase_time := 0.0
+## Naechste bisher erreichte Distanz zum Zielpunkt im Einzug (fuer "vorbei geflogen").
+var closest := INF
 
 var _bend_lengths: Array[float] = []
 var _bend_planes: Array[Vector3] = []   # Normale * Seite der Wickel-Ebene
@@ -52,6 +54,7 @@ func attach(point: Vector3, surface_normal: Vector3, hit_target: Node3D, player_
 	attach_height = player_pos.y
 	phase = Phase.PULL
 	phase_time = 0.0
+	closest = INF
 
 
 func release() -> void:
@@ -66,6 +69,7 @@ func release() -> void:
 func set_phase(p: Phase) -> void:
 	phase = p
 	phase_time = 0.0
+	closest = INF
 
 
 func anchor_world() -> Vector3:
@@ -117,6 +121,7 @@ func update_bends(space: PhysicsDirectSpaceState3D, pos: Vector3, velocity: Vect
 			bends.pop_back()
 			_bend_planes.pop_back()
 			rope_length += _bend_lengths.pop_back()
+			closest = INF  # Pivot hat gewechselt
 			return
 
 	# 2) Wickeln: Geometrie zwischen Spieler und Pivot?
@@ -139,6 +144,7 @@ func update_bends(space: PhysicsDirectSpaceState3D, pos: Vector3, velocity: Vect
 		var side := signf(n.dot(velocity))
 		plane_dir = n * (side if side != 0.0 else 1.0)
 	bends.append(new_bend)
+	closest = INF  # Pivot hat gewechselt
 	_bend_lengths.append(seg)
 	_bend_planes.append(plane_dir)
 	# Freie Laenge nie kuerzer als die echte Distanz -> kein Ruck beim Wickeln.
