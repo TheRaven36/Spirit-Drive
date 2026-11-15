@@ -20,6 +20,13 @@
 5. Falls Build-Hook aktiv: `GAME_BUMP=1 git commit --allow-empty -m "Release: Build hochzaehlen"`
 6. `git push origin Robin-Branch`, danach `git push origin Robin-Branch:main` (nur Fast-Forward, nie `--force`).
 
+## Regel: Godot-UIDs
+Godot 4.4+ legt zu jedem Skript/Shader eine `.uid`-Datei an. Vor jedem Commit
+`godot --headless --path . --import` laufen lassen und die erzeugten `.uid`-Dateien
+**mit** dem neuen Skript committen – sonst erzeugt Robins Editor sie lokal und der
+nächste `git pull` bricht ab. `tests/*.uid` sind ausgenommen (gitignored).
+`start_game.bat` repariert diesen Konflikt notfalls automatisch (`tools/fix_uid_conflicts.bat`).
+
 ## Checks
 ```bash
 # Projekt importieren + Skripte parsen

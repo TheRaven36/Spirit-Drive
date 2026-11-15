@@ -4,6 +4,11 @@ Neueste Einträge immer oben.
 
 ## Unreleased (Robin-Branch)
 
+### 2026-11-15 – Fix: Pull-Abbruch durch lokale .uid-Datei
+- `tests/movement_smoke_test.gd.uid` aus dem Repo genommen (wird lokal von Godot erzeugt, jetzt gitignored).
+- `start_game.bat` loest kuenftig Konflikte mit lokal erzeugten `.uid`-Dateien selbst
+  (`tools/fix_uid_conflicts.bat`) und bricht nur noch bei echten lokalen Aenderungen ab.
+
 ### 2026-11-15 – Kamera, neues Kampf-Layout, Seil-System v0.2
 **Neu**
 - **Kamera-Wechsel (P / Xbox View):** nahtlose Überblendung Third-Person ↔ First-Person

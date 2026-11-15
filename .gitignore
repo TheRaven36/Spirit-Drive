@@ -4,3 +4,6 @@
 
 # Lokale Einstellungen (Godot-Pfad etc.)
 *.local
+
+# Testskripte werden nicht per UID referenziert; Godot erzeugt sie lokal
+tests/*.uid
