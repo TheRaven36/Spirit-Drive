@@ -2,9 +2,10 @@ extends CanvasLayer
 ## Debug-HUD (clean): nur Fadenkreuz + Infotext.
 ## Der Auto-Aim arbeitet unsichtbar im Hintergrund – Seil und Trefferpunkt
 ## sieht der Spieler direkt in der Welt. Das Fadenkreuz faerbt sich nur dezent:
-## gruen = Seil-Ziel, orange = Gegner/Trefferpunkt im Lock-Kegel.
-## Nur bei aktivem Hard-Lock (Mausrad-Klick) markiert eine Klammer den
-## eingerasteten Punkt – sonst bleibt das Bild clean.
+## gruen = Seil-Ziel, orange = LMB wuerde einen Gegner greifen (Auto-Grab).
+## Nur bei aktivem Hard-Lock (Mausrad-Klick) markiert ein Rahmen (LockReticle,
+## ohne Text) exakt den eingerasteten Punkt: farbig = in Grapple-Reichweite,
+## grau = ausserhalb (Lock bleibt) – sonst bleibt das Bild clean.
 
 @export var guardian_path: NodePath
 
@@ -17,7 +18,7 @@ var _guardian: GuardianController
 var _crosshair: Label
 var _info: Label
 var _hooks: Label
-var _lock: Label
+var reticle: LockReticle
 
 
 func _ready() -> void:
@@ -28,10 +29,9 @@ func _ready() -> void:
 	_crosshair.grow_horizontal = Control.GROW_DIRECTION_BOTH
 	_crosshair.grow_vertical = Control.GROW_DIRECTION_BOTH
 
-	_lock = _make_label("[    ]", 30)
-	_lock.size = Vector2(120, 70)
-	_lock.modulate = COL_ENEMY
-	_lock.visible = false
+	reticle = LockReticle.new()
+	reticle.name = "LockReticle"
+	add_child(reticle)
 
 	_info = _make_label("", 16)
 	_info.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
@@ -44,11 +44,12 @@ func _ready() -> void:
 
 	var help := _make_label(
 			"WASD Laufen | Shift Sprint | Space Sprung | P Kamera | RMB halten Seil (Doppel-Tap = 2. Haken)\n"
-			+ "Am Seil: W Turbo, S Bremse, A/D seitlich | Mausrad-Klick Hard-Lock, Mausrad Ziel-Wechsel | "
-			+ "LMB (mit Lock) halten = ranziehen, loslassen = Schlag | R Reset", 14)
+			+ "Am Seil: W Turbo, S Bremse, A/D seitlich | LMB halten = Gegner unterm Fadenkreuz greifen, "
+			+ "loslassen = Schlag\nMausrad-Klick Hard-Lock (Kamera rastet ein, grau = ausser Reichweite), "
+			+ "Mausrad Ziel-Wechsel | R Reset", 14)
 	help.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	help.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT)
-	help.position += Vector2(16, -56)
+	help.position += Vector2(16, -74)
 
 
 func _make_label(text: String, size: int) -> Label:
@@ -68,7 +69,7 @@ func _process(_delta: float) -> void:
 		return
 	var g := _guardian
 	var col := COL_IDLE
-	if g.lock_target != null:
+	if g.combat_grab_target() != null and not g.is_hard_locked():
 		col = COL_ENEMY
 	elif g.aim_kind != GuardianController.AimKind.NONE:
 		col = COL_POINT
@@ -82,12 +83,7 @@ func _process(_delta: float) -> void:
 	if g.combat_hook():
 		extra += "   ANGRIFF"
 
-	var hl := g.hard_lock
-	_lock.visible = hl != null and is_instance_valid(hl) \
-			and not g.camera.is_position_behind(g._lock_point_of(hl))
-	if _lock.visible:
-		_lock.text = "[    ]\n%s" % ((hl as LockPoint).label if hl is LockPoint else hl.name)
-		_lock.position = g.camera.unproject_position(g._lock_point_of(hl)) - Vector2(60, 22)
+	_update_reticle(g)
 	_hooks.text = "%s L   %s R%s" % [_dot(g.hook_left.active), _dot(g.hook_right.active), extra]
 
 	var v := g.velocity
@@ -97,6 +93,20 @@ func _process(_delta: float) -> void:
 		"First-Person" if g.first_person else "Third-Person",
 		Engine.get_frames_per_second(),
 	]
+
+
+## Rahmen exakt auf den Lock-Punkt (Hitbox) projizieren, Groesse aus dem Ziel-Radius.
+func _update_reticle(g: GuardianController) -> void:
+	if not g.is_hard_locked():
+		reticle.visible = false
+		return
+	var p := g._lock_point_of(g.hard_lock)
+	if g.camera.is_position_behind(p):
+		reticle.visible = false
+		return
+	var c := g.camera.unproject_position(p)
+	var edge := g.camera.unproject_position(p + g.camera.global_basis.x * g.lock_radius_of(g.hard_lock))
+	reticle.show_at(c, c.distance_to(edge), g.hard_lock_in_range())
 
 
 func _dot(on: bool) -> String:

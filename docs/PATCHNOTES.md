@@ -4,6 +4,46 @@ Neueste Einträge immer oben.
 
 ## Unreleased (Robin-Branch)
 
+### 2026-11-15 – Dual-Mode-Targeting: Free-Flow Auto-Grab + echter Hard-Lock v0.6
+**Free-Flow Auto-Grab (ohne Hard-Lock)**
+- **LMB halten** greift automatisch den Gegner unter/nahe dem Fadenkreuz in Grapple-Reichweite und zieht heran,
+  **LMB loslassen** = Momentum-Slash im Anflug. Kein Lock nötig.
+- Großzügige Erkennung: Gegner exakt unterm Fadenkreuz → sonst nächster sichtbarer Trefferpunkt auf dem
+  anvisierten Körper (z. B. Riese) → sonst Fang-Kegel 9° / min. 3,5 m (`auto_grab_cone_deg`, `auto_grab_radius`).
+- Wird LMB gehalten und ein Ziel kommt erst später ins Fadenkreuz (oder zurück in Reichweite), greift das Seil sofort.
+- Näher als 4,5 m (`auto_grab_min_dist`) schlägt LMB direkt zu, statt ein Seil zu schießen.
+- Fadenkreuz wird orange, sobald LMB einen Gegner greifen würde.
+
+**Hard-Lock = echter Kamera-Lock**
+- Mit Hard-Lock übernimmt die Kamera: Yaw/Pitch folgen dem Lock-Punkt weich (`lock_camera_speed`), Maus und
+  rechter Stick drehen nicht frei. Schulter-Versatz und Spring-Arm sind eingerechnet – der Lock-Punkt liegt
+  exakt unterm Fadenkreuz.
+- **Lock bleibt außerhalb der Reichweite bestehen** (kein Abbruch mehr bei 1,3× Reichweite). Er fällt nur weg,
+  wenn das Ziel verschwindet/besiegt ist oder man ihn per Klick löst.
+- Einrasten und Durchschalten bis 120 m (`lock_acquire_range`), auch über die Grapple-Reichweite hinaus.
+- Mausrad-Wechsel mit **fester Reihenfolge**: Die mitdrehende Kamera wirft die Sortierung nicht mehr um
+  (kein Hin-und-her zwischen zwei Punkten).
+
+**Hitbox-Ausrichtung**
+- Dummy-Lock-Punkt = Mitte der Kollisions-Kapsel (vorher Mesh-Origin + 0,4 m Versatz).
+- Riesen-Lock-Punkte hängen jetzt unter der `CollisionShape3D` ihres Körperteils (`Shape_Torso`, `Shape_Kopf` …)
+  und folgen damit der Hitbox. Ziele ohne eigenen Lock-Punkt nutzen die Mitte ihrer Kollisions-Shapes.
+- `LockPoint`: neue Felder `radius` (Rahmengröße) und `center_on_shape`.
+
+**Reticle-UI**
+- Lock-Anzeige ohne Text/Namen: neuer `LockReticle` mit vier Eckklammern, exakt auf den Lock-Punkt projiziert,
+  Größe passt sich Ziel-Radius und Distanz an.
+- **Farbig** = in Grapple-Reichweite, **grau** = außerhalb (Lock bleibt, Seil erst wieder in Reichweite).
+
+**Kampf**
+- Der Schlag nutzt das stärkste Anflug-Momentum der letzten 0,12 s (`momentum_memory`) – ein Aufprall kurz vor
+  dem Schlag-Start verschluckt den Speed-/Plunge-Bonus nicht mehr.
+- Es gibt immer nur ein Combat-Seil; LMB loslassen löst es zuverlässig.
+
+**Tests**
+- Smoke-Test: 94 Checks (neu: Hitbox-Ausrichtung, Auto-Grab + Slash ohne Lock, Greifen beim Halten,
+  Kamera-Lock + Reticle-Position, Mausrad-Wechsel mit Kamera, Lock außer Reichweite grau + Wiedergreifen).
+
 ### 2026-11-15 – Winde per W/S, Hard-Lock mit Mausrad, LMB-Angriffs-Loop v0.5
 **Winde**
 - **Base-Pull 0,4** (`reel_base_mult`): 0,4 × 24 m/s ≈ 9,6 m/s – straff, hält die Distanz, zieht nicht aggressiv.

@@ -17,6 +17,7 @@ var last_point := ""
 var _mat: StandardMaterial3D
 var _label: Label3D
 var _meshes: Array[MeshInstance3D] = []
+var _shapes := {}
 var _flash := 0.0
 var _dmg_show := 0.0
 var _down_t := 0.0
@@ -31,15 +32,16 @@ const PARTS := [
 	["Kopf", "sphere", Vector3(1.4, 0, 0), Vector3(0.0, 12.4, 0.0)],
 ]
 
-## [label, position, damage_mult] – Punkte sitzen knapp vor der Oberflaeche.
+## [label, position, damage_mult, koerperteil, rahmen-radius] – Punkte sitzen knapp vor der
+## Oberflaeche und haengen unter der CollisionShape3D ihres Koerperteils (folgen der Hitbox).
 const POINTS := [
-	["Kopf", Vector3(0.0, 12.6, 1.45), 1.0],
-	["Nacken", Vector3(0.0, 11.3, -1.4), 1.0],
-	["Brust", Vector3(0.0, 9.5, 1.3), 1.0],
-	["Schulter L", Vector3(-3.0, 10.6, 0.65), 1.0],
-	["Schulter R", Vector3(3.0, 10.6, 0.65), 1.0],
-	["Knie L", Vector3(-1.4, 3.0, 0.85), 1.0],
-	["Knie R", Vector3(1.4, 3.0, 0.85), 1.0],
+	["Kopf", Vector3(0.0, 12.6, 1.45), 1.0, "Kopf", 1.2],
+	["Nacken", Vector3(0.0, 11.3, -1.4), 1.0, "Kopf", 0.9],
+	["Brust", Vector3(0.0, 9.5, 1.3), 1.0, "Torso", 1.6],
+	["Schulter L", Vector3(-3.0, 10.6, 0.65), 1.0, "ArmL", 0.9],
+	["Schulter R", Vector3(3.0, 10.6, 0.65), 1.0, "ArmR", 0.9],
+	["Knie L", Vector3(-1.4, 3.0, 0.85), 1.0, "BeinL", 0.9],
+	["Knie R", Vector3(1.4, 3.0, 0.85), 1.0, "BeinR", 0.9],
 ]
 
 
@@ -69,17 +71,21 @@ func _ready() -> void:
 		mi.name = p[0]
 		mi.position = p[3]
 		mi.material_override = _mat
+		cs.name = "Shape_" + String(p[0])
 		cs.position = p[3]
 		add_child(mi)
 		add_child(cs)
 		_meshes.append(mi)
+		_shapes[p[0]] = cs
 	for p: Array in POINTS:
 		var lp := LockPoint.new()
 		lp.name = "LP_" + String(p[0]).replace(" ", "")
 		lp.label = p[0]
-		lp.position = p[1]
 		lp.damage_mult = p[2]
-		add_child(lp)
+		lp.radius = p[4]
+		var part: CollisionShape3D = _shapes[p[3]]
+		lp.position = p[1] - part.position
+		part.add_child(lp)
 	_label = Label3D.new()
 	_label.position = Vector3(0, 15.0, 0)
 	_label.billboard = BaseMaterial3D.BILLBOARD_ENABLED

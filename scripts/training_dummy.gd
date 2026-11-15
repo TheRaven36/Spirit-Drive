@@ -14,6 +14,7 @@ var last_damage := 0.0
 var _dmg_show := 0.0
 
 @onready var _mesh: MeshInstance3D = $Mesh
+@onready var _shape: CollisionShape3D = $Shape
 @onready var _label: Label3D = $HpLabel
 var _mat: StandardMaterial3D
 var _flash := 0.0
@@ -32,8 +33,14 @@ func _ready() -> void:
 	_update_label()
 
 
+## Lock-/Grapple-Punkt = Mitte der Kollisions-Kapsel (nicht Mesh-Origin + Versatz).
 func get_lock_point() -> Vector3:
-	return global_position + Vector3.UP * 0.4
+	return _shape.global_position
+
+
+func get_lock_radius() -> float:
+	var c := _shape.shape as CapsuleShape3D
+	return c.height * 0.5 if c else 1.0
 
 
 func is_lockable() -> bool:

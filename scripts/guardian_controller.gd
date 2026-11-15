@@ -11,10 +11,15 @@ extends CharacterBody3D
 ##             A / D = seitlich quer zum Seil ausweichen / schwingen.
 ##           - Doppel-Tap: zweiter Haken an zweiter Oberflaeche, zwei straffe Seile.
 ##           Seile wickeln sich um Geometrie (Bending) und loesen sich nie von selbst.
-## Lock:     Mausrad-Klick / R3 = Hard-Lock an/aus, Mausrad = Ziel-Wechsel.
-##           Mit Hard-Lock: LMB halten = Seil zum Lock-Punkt + heranziehen,
-##           LMB loslassen = Messer-Schlag im Anflug (Momentum-Schaden).
-## Kampf:    LMB = Jagdmesser (siehe KnifeCombat).
+## Kampf:    Zwei Targeting-Modi, beide immer aktiv:
+##           - Free-Flow (ohne Lock): LMB halten greift automatisch den Gegner
+##             unter/nahe dem Fadenkreuz in Grapple-Reichweite (Auto-Grab) und zieht
+##             heran, LMB loslassen = Momentum-Slash im Anflug.
+##           - Hard-Lock (Mausrad-Klick / R3): Kamera rastet auf das Ziel/den
+##             Trefferpunkt ein, Mausrad = Ziel-Wechsel. Der Lock bleibt auch
+##             ausserhalb der Grapple-Reichweite (Rahmen grau, kein Seil moeglich).
+##             LMB halten = Seil zum Lock-Punkt, loslassen = Schlag.
+##           Ganz nah am Ziel (< auto_grab_min_dist) schlaegt LMB direkt zu.
 ## Kamera:   P = Third-/First-Person, nahtlos ueberblendet.
 ##
 ## Physik in _physics_process, Kamera/Visuals in _process ueber die
@@ -78,8 +83,28 @@ enum AimKind { NONE, POINT, ENEMY }
 ## Windengeschwindigkeit des Combat-Seils = reel_speed * combat_reel_mult (W/S wirken auch hier).
 @export var combat_reel_mult := 1.0
 @export var combat_pull_impulse := 6.0
-## Hard-Lock bleibt bis zu grapple_range * diesem Faktor bestehen.
+## Max. Seillaenge des Combat-Seils = grapple_range * diesem Faktor.
 @export var lock_keep_range_mult := 1.3
+## Zeitfenster (s): Der Schlag nutzt das staerkste Anflug-Momentum dieser Spanne,
+## damit ein Aufprall kurz vor dem Schlag-Start den Bonus nicht verschluckt.
+@export var momentum_memory := 0.12
+## Unter dieser Distanz zum Ziel feuert LMB kein Seil, sondern schlaegt direkt (Messer-Reichweite).
+@export var auto_grab_min_dist := 4.5
+
+# --- Free-Flow Auto-Grab (LMB ohne Hard-Lock) ------------------------------
+@export_group("Auto Grab")
+## Grosszuegiger Fang-Kegel um das Fadenkreuz fuer den Auto-Grab.
+@export var auto_grab_cone_deg := 9.0
+## Mindest-Fang-Radius (m) um den Fadenkreuz-Strahl.
+@export var auto_grab_radius := 3.5
+
+# --- Hard-Lock ------------------------------------------------------------
+@export_group("Hard Lock")
+## Bis zu dieser Distanz laesst sich ein Ziel einrasten/durchschalten (auch ausserhalb
+## der Grapple-Reichweite – dann grau). Ein bestehender Lock wird NIE wegen Distanz geloest.
+@export var lock_acquire_range := 120.0
+## Wie schnell die Kamera dem Lock-Ziel folgt (1/s, exponentielle Glaettung).
+@export var lock_camera_speed := 14.0
 
 # --- Auto-Aim -------------------------------------------------------------
 @export_group("Aim Assist")
@@ -142,8 +167,14 @@ var hooks: Array[GrappleHook] = [hook_left, hook_right]
 var aim_normal := Vector3.ZERO
 ## Bester Lock-Kandidat im Kegel um das Fadenkreuz (unsichtbar).
 var lock_target: Node3D = null
-## Eingerasteter Hard-Lock (Mausrad-Klick / R3). Bleibt bis zum Loesen bestehen.
+## Eingerasteter Hard-Lock (Mausrad-Klick / R3). Bleibt bis zum Loesen bestehen –
+## auch ausserhalb der Grapple-Reichweite (siehe hard_lock_in_range()).
 var hard_lock: Node3D = null
+## Free-Flow: Gegner/Trefferpunkt, den LMB ohne Hard-Lock greifen wuerde.
+var auto_grab_target: Node3D = null
+## Collider unter dem Fadenkreuz (Auto-Aim-Treffer) und Trefferposition.
+var aim_collider: Object = null
+var aim_hit_pos := Vector3.ZERO
 
 var _yaw := 0.0
 var _pitch := -0.15
@@ -159,6 +190,11 @@ var _rope_mm: MultiMesh
 var _next_hip: GrappleHook = null
 var _primary: GrappleHook = null
 var _grace_t := -1.0
+## Feste Reihenfolge fuer den Mausrad-Wechsel (sonst springt die Sortierung mit der Kamera).
+var _cycle_order: Array[Node3D] = []
+## [zeit, geschwindigkeit] vor move_and_slide – Anflug-Momentum fuer den Schlag.
+var _vel_history: Array = []
+var _clock := 0.0
 
 
 func _ready() -> void:
@@ -181,6 +217,8 @@ func _ready() -> void:
 # =========================================================================
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
+		if is_hard_locked():
+			return  # Kamera gehoert dem Lock
 		_yaw -= event.relative.x * mouse_sensitivity
 		_pitch = clampf(_pitch - event.relative.y * mouse_sensitivity, -1.45, 1.35)
 	elif event.is_action_pressed("toggle_camera"):
@@ -267,11 +305,28 @@ func _physics_process(delta: float) -> void:
 	if velocity.length() > terminal_speed:
 		velocity = velocity.normalized() * terminal_speed
 
+	_record_momentum(delta)
 	move_and_slide()
 	_post_move(wish, delta)
 
 	if global_position.y < RESPAWN_Y:
 		_respawn()
+
+
+func _record_momentum(delta: float) -> void:
+	_clock += delta
+	_vel_history.append([_clock, velocity])
+	while not _vel_history.is_empty() and _clock - _vel_history[0][0] > momentum_memory:
+		_vel_history.pop_front()
+
+
+## Staerkstes Momentum (vor Kollisionen) der letzten momentum_memory Sekunden.
+func momentum_velocity() -> Vector3:
+	var best := velocity
+	for e: Array in _vel_history:
+		if (e[1] as Vector3).length_squared() > best.length_squared():
+			best = e[1]
+	return best
 
 
 func _tick_timers(delta: float) -> void:
@@ -430,20 +485,63 @@ func _handle_hook_input(delta: float) -> void:
 		_release_rope_hooks()
 
 
-## LMB: ohne Hard-Lock normaler Slash. Mit Hard-Lock: Halten = Combat-Seil zum
-## Lock-Punkt + heranziehen, Loslassen = Messer-Schlag im Anflug.
+## LMB halten = Combat-Seil zum Ziel + heranziehen, Loslassen = Messer-Schlag im Anflug.
+## Ziel: Hard-Lock (falls aktiv und in Reichweite), sonst Free-Flow-Auto-Grab unterm
+## Fadenkreuz. Kein greifbares Ziel = normaler Slash. Waehrend LMB gehalten wird,
+## greift das Seil sofort zu, sobald ein Ziel greifbar wird (z. B. zurueck in Reichweite).
 func _handle_attack_input() -> void:
 	if Input.is_action_just_pressed("attack"):
-		if hard_lock != null and _fire_combat_hook():
+		if combat_hook() != null or _try_combat_grab():
 			return
-		knife.request_slash()
+		knife.request_slash(_strike_target())
 	elif Input.is_action_just_released("attack"):
 		var ch := combat_hook()
 		if ch:
-			var lock := hard_lock if is_instance_valid(hard_lock) else null
-			ch.release()
-			knife.request_slash(lock)
+			var tgt: Node3D = ch.target if is_instance_valid(ch.target) else null
+			_release_combat_hooks()
+			knife.request_slash(tgt)
 			_refresh_state()
+	elif Input.is_action_pressed("attack") and combat_hook() == null:
+		_try_combat_grab()
+
+
+## Ziel, das LMB gerade greifen wuerde (Hard-Lock hat Vorrang). null = nichts greifbar.
+func combat_grab_target() -> Node3D:
+	var t: Node3D = null
+	if hard_lock != null:
+		if not is_instance_valid(hard_lock) or not hard_lock_in_range():
+			return null
+		t = hard_lock
+	else:
+		t = auto_grab_target
+	if t == null or not is_instance_valid(t):
+		return null
+	var d := global_position.distance_to(_lock_point_of(t))
+	if d < auto_grab_min_dist or d > grapple_range:
+		return null
+	return t
+
+
+## Ziel fuer einen direkten Schlag ohne Seil (Lock oder Auto-Ziel in Messer-Naehe).
+func _strike_target() -> Node3D:
+	var t: Node3D = hard_lock if is_instance_valid(hard_lock) else auto_grab_target
+	if t != null and is_instance_valid(t) \
+			and global_position.distance_to(_lock_point_of(t)) <= knife.lock_strike_reach:
+		return t
+	return hard_lock if is_instance_valid(hard_lock) else null
+
+
+func _try_combat_grab() -> bool:
+	if combat_hook() != null:
+		return true  # es gibt immer nur ein Combat-Seil
+	var t := combat_grab_target()
+	return t != null and _fire_combat_hook(t)
+
+
+func _release_combat_hooks() -> void:
+	for h in hooks:
+		if h.combat:
+			h.release()
 
 
 func rope_hooks_out() -> int:
@@ -500,17 +598,17 @@ func _fire_second_hook() -> void:
 	_refresh_state()
 
 
-## Combat-Seil zum Hard-Lock-Punkt. Sind beide Hueften belegt, wird das aeltere
-## RMB-Seil dafuer eingeholt.
-func _fire_combat_hook() -> bool:
-	if not is_instance_valid(hard_lock) or global_position.distance_to(_lock_point_of(hard_lock)) > grapple_range:
+## Combat-Seil zum Ziel (Hard-Lock oder Auto-Grab). Sind beide Hueften belegt,
+## wird das aeltere RMB-Seil dafuer eingeholt.
+func _fire_combat_hook(target: Node3D) -> bool:
+	if not is_instance_valid(target) or global_position.distance_to(_lock_point_of(target)) > grapple_range:
 		return false
 	var h := _take_free_hip()
 	if h == null:
 		h = hook_left if _primary == hook_right else hook_right
 		h.release()
-	var p := _lock_point_of(hard_lock)
-	h.attach(p, Vector3.ZERO, hard_lock, global_position, true)
+	var p := _lock_point_of(target)
+	h.attach(p, Vector3.ZERO, target, global_position, true)
 	velocity += (p - global_position).normalized() * combat_pull_impulse
 	if is_on_floor():
 		velocity.y = maxf(velocity.y, 6.0)
@@ -620,9 +718,50 @@ func _release_all_hooks() -> void:
 # Auto-Aim (Kegel um das Fadenkreuz)
 # =========================================================================
 func _update_aim() -> void:
+	_update_aim_point()
+	_update_auto_grab()
+
+
+## Free-Flow: welchen Gegner/Trefferpunkt wuerde LMB ohne Hard-Lock greifen?
+## 1) Gegner exakt unterm Fadenkreuz, 2) Fadenkreuz liegt auf dem Koerper eines
+## Gegners mit Trefferpunkten -> naechster sichtbarer Punkt, 3) grosszuegiger Kegel.
+func _update_auto_grab() -> void:
+	auto_grab_target = null
+	if aim_kind == AimKind.ENEMY and is_instance_valid(aim_target):
+		auto_grab_target = aim_target
+		return
+	var space := get_world_3d().direct_space_state
+	var start := _aim_start()
+	if aim_collider != null and aim_kind == AimKind.POINT:
+		var best_d := INF
+		for n in get_tree().get_nodes_in_group("lock_target"):
+			var t := n as Node3D
+			if t == null or not _is_lockable(t) or hit_receiver_of(t) != aim_collider:
+				continue
+			var p := _lock_point_of(t)
+			var dd := p.distance_to(aim_hit_pos)
+			if dd < best_d and global_position.distance_to(p) <= grapple_range \
+					and _has_line_of_sight(space, start, t, p):
+				best_d = dd
+				auto_grab_target = t
+		if auto_grab_target != null:
+			return
+	auto_grab_target = _find_lock_target(space, start, aim_forward(), grapple_range,
+			auto_grab_cone_deg, auto_grab_radius)
+
+
+## Startpunkt der Ziel-Strahlen: auf Spielerhoehe entlang des Kamera-Strahls.
+func _aim_start() -> Vector3:
+	var cam_pos := camera.global_position
+	var fwd := aim_forward()
+	return cam_pos + fwd * maxf((global_position - cam_pos).dot(fwd), 0.0)
+
+
+func _update_aim_point() -> void:
 	aim_kind = AimKind.NONE
 	aim_target = null
 	aim_assisted = false
+	aim_collider = null
 	var cam_pos := camera.global_position
 	var fwd := aim_forward()
 	# Startpunkt auf Spielerhoehe entlang des Kamera-Strahls -> in Third-Person
@@ -630,8 +769,8 @@ func _update_aim() -> void:
 	var start := cam_pos + fwd * maxf((global_position - cam_pos).dot(fwd), 0.0)
 	var space := get_world_3d().direct_space_state
 
-	# 1) Target-Lock (Tab): Gegner im Kegel, Fang-Radius = max(assist_radius, Distanz * tan(Kegel))
-	lock_target = _find_lock_target(space, start, fwd)
+	# 1) Lock-Kandidat: Gegner im Kegel, Fang-Radius = max(assist_radius, Distanz * tan(Kegel))
+	lock_target = _find_lock_target(space, start, fwd, grapple_range, assist_cone_deg, assist_radius)
 
 	# 2) Exakter Strahl unterm Fadenkreuz
 	var hit := _ray(space, start, start + fwd * grapple_range)
@@ -671,6 +810,8 @@ func _accept_aim_hit(hit: Dictionary) -> bool:
 
 func _set_aim_from_hit(hit: Dictionary, assisted: bool) -> void:
 	var col: Object = hit.collider
+	aim_collider = col
+	aim_hit_pos = hit.position
 	if col is Node3D and (col as Node3D).is_in_group("lock_target") and _is_lockable(col):
 		aim_kind = AimKind.ENEMY
 		aim_target = col as Node3D
@@ -683,23 +824,24 @@ func _set_aim_from_hit(hit: Dictionary, assisted: bool) -> void:
 	aim_assisted = assisted
 
 
-func _find_lock_target(space: PhysicsDirectSpaceState3D, start: Vector3, fwd: Vector3) -> Node3D:
+func _find_lock_target(space: PhysicsDirectSpaceState3D, start: Vector3, fwd: Vector3,
+		max_range: float, cone_deg: float, radius: float) -> Node3D:
 	var best: Node3D = null
 	var best_score := INF
-	var tan_cone := tan(deg_to_rad(assist_cone_deg))
+	var tan_cone := tan(deg_to_rad(cone_deg))
 	for n in get_tree().get_nodes_in_group("lock_target"):
 		var t := n as Node3D
 		if t == null or not _is_lockable(t):
 			continue
 		var p := _lock_point_of(t)
-		if global_position.distance_to(p) > grapple_range:
+		if global_position.distance_to(p) > max_range:
 			continue
 		var v := p - start
 		var along := v.dot(fwd)
 		if along <= 0.0:
 			continue
 		var perp := (v - fwd * along).length()
-		var allowed := maxf(assist_radius, along * tan_cone)
+		var allowed := maxf(radius, along * tan_cone)
 		if perp > allowed:
 			continue
 		var score := perp / allowed + along * 0.002
@@ -712,8 +854,26 @@ func _find_lock_target(space: PhysicsDirectSpaceState3D, start: Vector3, fwd: Ve
 	return best
 
 
+## Ziel-Punkt eines Lock-Ziels: eigener Lock-Punkt (Koerperteil/Hitbox) oder
+## Mitte seiner Kollisions-Shapes – nie ein versetzter Mesh-Origin.
 func _lock_point_of(t: Node3D) -> Vector3:
-	return t.get_lock_point() if t.has_method("get_lock_point") else t.global_position
+	return t.get_lock_point() if t.has_method("get_lock_point") else hitbox_center(t)
+
+
+## Radius (m) des Ziel-Rahmens.
+func lock_radius_of(t: Node3D) -> float:
+	return t.get_lock_radius() if t.has_method("get_lock_radius") else 1.0
+
+
+## Mittelpunkt der direkten CollisionShape3D-Kinder (Fallback: eigene Position).
+static func hitbox_center(n: Node3D) -> Vector3:
+	var sum := Vector3.ZERO
+	var count := 0
+	for c in n.get_children():
+		if c is CollisionShape3D and not (c as CollisionShape3D).disabled:
+			sum += (c as Node3D).global_position
+			count += 1
+	return sum / count if count > 0 else n.global_position
 
 
 func _is_lockable(t: Object) -> bool:
@@ -724,32 +884,62 @@ func _is_lockable(t: Object) -> bool:
 # Hard-Lock & Ziel-Wechsel
 # =========================================================================
 ## Mausrad-Klick / R3: Ziel unterm Fadenkreuz einrasten bzw. Lock loesen.
+## Einrasten geht bis lock_acquire_range – auch ausserhalb der Grapple-Reichweite.
 func toggle_hard_lock() -> void:
 	if hard_lock != null:
-		hard_lock = null
-	elif lock_target != null:
-		hard_lock = lock_target
+		release_hard_lock()
+		return
+	var t := lock_target
+	if t == null:
+		t = _find_lock_target(get_world_3d().direct_space_state, _aim_start(), aim_forward(),
+				lock_acquire_range, assist_cone_deg, assist_radius)
+	if t != null:
+		hard_lock = t
+		_cycle_order.clear()
+
+
+func release_hard_lock() -> void:
+	hard_lock = null
+	_cycle_order.clear()
+
+
+func is_hard_locked() -> bool:
+	return hard_lock != null and is_instance_valid(hard_lock)
+
+
+## Lock-Ziel in Grapple-Reichweite? (false = Rahmen grau, kein Combat-Seil)
+func hard_lock_in_range() -> bool:
+	return is_hard_locked() and global_position.distance_to(_lock_point_of(hard_lock)) <= grapple_range
 
 
 ## Mausrad: durch alle anvisierbaren Ziele/Trefferpunkte schalten.
-## Ohne Lock rastet der erste Scroll das beste Ziel ein.
+## Ohne Lock rastet der erste Scroll das beste Ziel ein. Die Reihenfolge wird beim
+## ersten Scroll festgelegt (Naehe zum Fadenkreuz) und danach beibehalten – sonst
+## wuerde die mitdrehende Lock-Kamera die Sortierung bei jedem Schritt umwerfen.
 func cycle_lock(step: int) -> void:
 	var list := lock_candidates()
-	if list.is_empty():
+	var order: Array[Node3D] = []
+	for t in _cycle_order:
+		if is_instance_valid(t) and (list.has(t) or t == hard_lock):
+			order.append(t)
+	for t in list:
+		if not order.has(t):
+			order.append(t)
+	_cycle_order = order
+	if order.is_empty():
 		return
-	var i := list.find(hard_lock)
+	var i := order.find(hard_lock)
 	if i == -1:
-		hard_lock = list[0] if lock_target == null or not list.has(lock_target) else lock_target
+		hard_lock = lock_target if lock_target != null and order.has(lock_target) else order[0]
 		return
-	hard_lock = list[posmod(i + step, list.size())]
+	hard_lock = order[posmod(i + step, order.size())]
 
 
-## Alle anvisierbaren Ziele in Reichweite mit Sichtlinie, sortiert nach Winkel
-## zum Fadenkreuz (naechstes zuerst).
+## Alle anvisierbaren Ziele (bis lock_acquire_range) mit Sichtlinie, sortiert nach
+## Winkel zum Fadenkreuz (naechstes zuerst).
 func lock_candidates() -> Array[Node3D]:
-	var cam_pos := camera.global_position
 	var fwd := aim_forward()
-	var start := cam_pos + fwd * maxf((global_position - cam_pos).dot(fwd), 0.0)
+	var start := _aim_start()
 	var space := get_world_3d().direct_space_state
 	var scored: Array = []
 	for n in get_tree().get_nodes_in_group("lock_target"):
@@ -757,7 +947,7 @@ func lock_candidates() -> Array[Node3D]:
 		if t == null or not _is_lockable(t):
 			continue
 		var p := _lock_point_of(t)
-		if global_position.distance_to(p) > grapple_range:
+		if global_position.distance_to(p) > lock_acquire_range:
 			continue
 		var v := p - start
 		if v.dot(fwd) <= 0.0:
@@ -772,15 +962,14 @@ func lock_candidates() -> Array[Node3D]:
 	return out
 
 
+## Lock faellt nur weg, wenn das Ziel verschwindet oder nicht mehr anvisierbar ist
+## (z. B. besiegt) – NICHT wegen Distanz.
 func _update_hard_lock() -> void:
 	if hard_lock == null:
 		return
-	if not is_instance_valid(hard_lock) or not _is_lockable(hard_lock) \
-			or global_position.distance_to(_lock_point_of(hard_lock)) > grapple_range * lock_keep_range_mult:
-		hard_lock = null
-		var ch := combat_hook()
-		if ch:
-			ch.release()
+	if not is_instance_valid(hard_lock) or not _is_lockable(hard_lock):
+		release_hard_lock()
+		_release_combat_hooks()
 
 
 func _has_line_of_sight(space: PhysicsDirectSpaceState3D, from: Vector3, t: Node3D, p: Vector3) -> bool:
@@ -817,9 +1006,10 @@ func _set_state(new_state: State) -> void:
 
 func _respawn() -> void:
 	_release_all_hooks()
-	hard_lock = null
+	release_hard_lock()
 	global_position = _spawn
 	velocity = Vector3.ZERO
+	_vel_history.clear()
 	_set_state(State.NORMAL)
 	reset_physics_interpolation()
 
@@ -829,7 +1019,7 @@ func _respawn() -> void:
 # =========================================================================
 func _process(delta: float) -> void:
 	var look := Input.get_vector("look_left", "look_right", "look_up", "look_down")
-	if look != Vector2.ZERO:
+	if look != Vector2.ZERO and not is_hard_locked():
 		_yaw -= look.x * stick_sensitivity * delta
 		_pitch = clampf(_pitch - look.y * stick_sensitivity * delta, -1.45, 1.35)
 
@@ -839,7 +1029,10 @@ func _process(delta: float) -> void:
 	_apply_camera_blend(b)
 
 	var t := get_global_transform_interpolated()
-	cam_rig.global_position = t.origin + Vector3.UP * lerpf(tp_height, fp_height, b)
+	var pivot := t.origin + Vector3.UP * lerpf(tp_height, fp_height, b)
+	if is_hard_locked():
+		_track_lock_camera(pivot, delta)
+	cam_rig.global_position = pivot
 	cam_rig.rotation = Vector3(0.0, _yaw, 0.0)
 	cam_pitch.rotation = Vector3(_pitch, 0.0, 0.0)
 
@@ -858,6 +1051,35 @@ func _process(delta: float) -> void:
 
 	_animate_knife()
 	_update_ropes(t.origin, b)
+
+
+## Hard-Lock-Kamera: dreht Yaw/Pitch weich so, dass der Kamera-Strahl (Fadenkreuz)
+## exakt durch den Lock-Punkt laeuft – inkl. Schulter-Versatz und Spring-Arm-Laenge.
+func _track_lock_camera(pivot: Vector3, delta: float) -> void:
+	var goal := lock_view_angles(pivot, _lock_point_of(hard_lock))
+	if goal == Vector2.INF:
+		return
+	var k := 1.0 - exp(-lock_camera_speed * delta)
+	_yaw = lerp_angle(_yaw, goal.x, k)
+	_pitch = lerpf(_pitch, goal.y, k)
+
+
+## Yaw/Pitch (x/y), bei denen die Kamera von `pivot` aus genau auf `target` zielt.
+## Vector2.INF, wenn das Ziel direkt ueber/unter dem Spieler liegt (Yaw undefiniert).
+func lock_view_angles(pivot: Vector3, target: Vector3) -> Vector2:
+	# Kamera-Versatz im Pitch-Raum (Schulter + Spring-Arm), unabhaengig von Yaw/Pitch.
+	var local_off := cam_pitch.global_transform.affine_inverse() * camera.global_position
+	var yaw := _yaw
+	var pitch := _pitch
+	for i in 4:
+		var cam_pos := pivot + Basis(Vector3.UP, yaw) * Basis(Vector3.RIGHT, pitch) * local_off
+		var v := target - cam_pos
+		var flat := Vector2(v.x, v.z).length()
+		if flat < 0.3:
+			return Vector2.INF
+		yaw = atan2(-v.x, -v.z)
+		pitch = clampf(atan2(v.y, flat), -1.45, 1.35)
+	return Vector2(yaw, pitch)
 
 
 func _apply_camera_blend(b: float) -> void:

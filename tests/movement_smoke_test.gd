@@ -33,6 +33,11 @@ func _run() -> void:
 	await _test_lock_cycling_giant()
 	await _test_lock_slash_loop()
 	await _test_giant_point_hit()
+	await _test_hitbox_alignment()
+	await _test_auto_grab_free_flow()
+	await _test_auto_grab_hold()
+	await _test_hard_lock_camera()
+	await _test_hard_lock_out_of_range()
 	await _test_rope_bending()
 	await _test_wallrun()
 
@@ -349,7 +354,7 @@ func _test_giant_point_hit() -> void:
 	print("Lock-Punkt-Treffer am Riesen")
 	var giant: TrainingGiant = arena.get_node("TrainingGiant")
 	await _place(Vector3(0, 8.0, -70.0), 0.0, 0.0)
-	var chest: LockPoint = giant.get_node("LP_Brust")
+	var chest: LockPoint = giant.find_child("LP_Brust", true, false)
 	_aim_at(chest.global_position)
 	await _process_frames(2)
 	await _frames(3)
@@ -368,6 +373,166 @@ func _test_giant_point_hit() -> void:
 	_check(g.knife.last_hit.get("point", "") == "Brust", "Treffer wird dem Punkt zugeordnet (%s)" % g.knife.last_hit.get("point", "-"))
 	await _action_event("hard_lock")
 	await _frames(90)
+
+
+func _test_hitbox_alignment() -> void:
+	print("Hitbox-Ausrichtung")
+	var d := _dummy_near(Vector3(0, 1, -40))
+	var shape: CollisionShape3D = d.get_node("Shape")
+	_check(d.get_lock_point().distance_to(shape.global_position) < 0.001,
+			"Dummy-Lock-Punkt = Mitte der Kollisions-Kapsel")
+	var giant: TrainingGiant = arena.get_node("TrainingGiant")
+	var chest: LockPoint = giant.find_child("LP_Brust", true, false)
+	_check(chest != null and chest.get_parent() is CollisionShape3D \
+			and chest.get_parent().name == "Shape_Torso", "Riesen-Punkt haengt an der Torso-Hitbox")
+	_check(chest != null and chest.get_hit_receiver() == giant, "Punkt leitet Schaden an den Riesen")
+	var head: LockPoint = giant.find_child("LP_Kopf", true, false)
+	var head_shape: CollisionShape3D = giant.get_node("Shape_Kopf")
+	var r := (head_shape.shape as SphereShape3D).radius
+	var surf := head.global_position.distance_to(head_shape.global_position)
+	_check(surf > r - 0.1 and surf < r + 0.3, "Kopf-Punkt sitzt auf der Kopf-Hitbox (%.2f m / r %.2f)" % [surf, r])
+
+
+func _test_auto_grab_free_flow() -> void:
+	print("Free-Flow Auto-Grab (LMB ohne Hard-Lock)")
+	var d := _dummy_near(Vector3(0, 1, -40))
+	await _place(Vector3(1.5, 24.0, -33.0), 0.0, 0.0)
+	# Fadenkreuz bewusst ~1.5 m neben das Ziel -> grosszuegiger Fang-Kegel muss greifen.
+	_aim_at(d.get_lock_point() + Vector3(1.5, 0.8, 0))
+	await _process_frames(2)
+	await _frames(3)
+	_check(g.hard_lock == null, "kein Hard-Lock aktiv")
+	_check(g.auto_grab_target == d, "Fadenkreuz nahe am Gegner = Auto-Grab-Ziel")
+	var hits := d.hits_taken
+	Input.action_press("attack")
+	await _frames(2)
+	var ch := g.combat_hook()
+	_check(ch != null and ch.target == d and g.knife.phase == KnifeCombat.Phase.IDLE,
+			"LMB halten: Seil greift den Gegner ohne Lock, noch kein Schlag")
+	var released := false
+	for i in 150:
+		await physics_frame
+		if g.global_position.distance_to(d.get_lock_point()) < 3.2:
+			Input.action_release("attack")
+			released = true
+			break
+	await _frames(12)
+	_check(released, "Auto-Grab zieht zum Gegner heran")
+	_check(g.combat_hook() == null, "LMB loslassen loest das Seil")
+	var lh: Dictionary = g.knife.last_hit
+	_check(d.hits_taken > hits and lh.get("speed", 0.0) > 15.0
+			and lh.get("damage", 0.0) > g.knife.min_damage * 5.0,
+			"Momentum-Slash trifft (%.0f Schaden bei %.0f m/s, Plunge x%.1f)"
+			% [lh.get("damage", 0.0), lh.get("speed", 0.0), lh.get("plunge_mult", 0.0)])
+	_check(lh.get("is_plunge", false), "Sturz von oben zaehlt als Plunge (Dive-Winkel)")
+	_revive(d)
+	# Kein Ziel unterm Fadenkreuz -> normaler Slash, kein Seil
+	await _place(Vector3(0, 1.2, 0), 0.0, 1.2)
+	await _tap("attack")
+	await _frames(2)
+	_check(g.combat_hook() == null and g.knife.is_attacking(), "ohne Ziel: LMB = normaler Slash")
+	await _frames(40)
+
+
+func _test_auto_grab_hold() -> void:
+	print("Auto-Grab beim Halten")
+	var d := _dummy_near(Vector3(0, 1, -40))
+	await _place(Vector3(0, 1.2, -12.0), 0.0, 1.2)  # Blick in den Himmel
+	Input.action_press("attack")
+	await _frames(3)
+	_check(g.combat_hook() == null, "LMB gehalten, noch kein Ziel")
+	_aim_at(d.get_lock_point())
+	await _process_frames(2)
+	await _frames(3)
+	var ch := g.combat_hook()
+	_check(ch != null and ch.target == d, "Ziel kommt ins Fadenkreuz -> Seil greift sofort")
+	Input.action_release("attack")
+	await _frames(40)
+
+
+func _test_hard_lock_camera() -> void:
+	print("Hard-Lock-Kamera")
+	var d := _dummy_near(Vector3(0, 1, -40))
+	var hud = arena.get_node("HUD")
+	_check(hud.get("_lock") == null and hud.reticle is LockReticle, "Lock-UI = reiner Rahmen ohne Text-Label")
+	await _place(Vector3(0, 1.2, -10.0), 0.0, -0.02)
+	await _frames(3)
+	await _action_event("hard_lock")
+	_check(g.hard_lock == d, "Ziel eingerastet")
+	# Freies Umsehen wird ueberschrieben: Kamera dreht zurueck aufs Ziel.
+	g._yaw += 0.9
+	g._pitch += 0.4
+	Input.action_press("look_right")
+	await _process_frames(90)
+	Input.action_release("look_right")
+	var err := _cam_error_deg(d.get_lock_point())
+	_check(err < 1.0, "Kamera bleibt auf das Ziel gerichtet (%.2f°)" % err)
+	_check(g.hard_lock_in_range() and hud.reticle.visible and hud.reticle.in_range
+			and hud.reticle.current_color() == LockReticle.COL_IN_RANGE, "Rahmen farbig in Reichweite")
+	var center: Vector2 = g.get_viewport().get_visible_rect().size * 0.5
+	var proj := g.camera.unproject_position(d.get_node("Shape").global_position)
+	_check(hud.reticle.center.distance_to(proj) < 0.5, "Rahmen sitzt exakt auf der Hitbox-Mitte")
+	_check(hud.reticle.center.distance_to(center) < 6.0,
+			"Hitbox liegt unterm Fadenkreuz (%.1f px)" % hud.reticle.center.distance_to(center))
+	# Ziel-Wechsel am Riesen: Kamera folgt dem neuen Punkt
+	var giant: TrainingGiant = arena.get_node("TrainingGiant")
+	await _action_event("hard_lock")
+	await _place(Vector3(0, 6.0, -62.0), 0.0, 0.0)
+	_aim_at(giant.global_position + Vector3(0, 9.5, 1.3))
+	await _process_frames(2)
+	await _frames(3)
+	await _action_event("lock_next")
+	var a := g.hard_lock
+	await _action_event("lock_next")
+	var b := g.hard_lock
+	await _process_frames(90)
+	err = _cam_error_deg(g._lock_point_of(b))
+	_check(a != b and b is LockPoint and err < 1.0,
+			"Mausrad wechselt Punkt, Kamera folgt (%s -> %s, %.2f°)" % [_lname(a), _lname(b), err])
+	var order := []
+	for i in 6:
+		order.append(_lname(g.hard_lock))
+		await _action_event("lock_next")
+		await _process_frames(20)
+	var uniq := {}
+	for n in order:
+		uniq[n] = true
+	_check(uniq.size() >= 4, "Wechsel bleibt stabil trotz mitdrehender Kamera (%s)" % ", ".join(order))
+	await _action_event("hard_lock")
+
+
+func _test_hard_lock_out_of_range() -> void:
+	print("Hard-Lock ausserhalb der Reichweite")
+	var d := _dummy_near(Vector3(0, 1, -40))
+	var hud = arena.get_node("HUD")
+	await _place(Vector3(0, 1.2, -10.0), 0.0, -0.02)
+	await _frames(3)
+	await _action_event("hard_lock")
+	_check(g.hard_lock == d, "Ziel eingerastet")
+	await _place(Vector3(0, 1.2, 42.0), 0.0, 0.0)  # 82 m entfernt
+	await _process_frames(90)
+	await _frames(5)
+	var dist := g.global_position.distance_to(d.get_lock_point())
+	_check(g.hard_lock == d, "Lock bleibt bei %.0f m (Reichweite %.0f m)" % [dist, g.grapple_range])
+	_check(not g.hard_lock_in_range() and hud.reticle.visible and not hud.reticle.in_range
+			and hud.reticle.current_color() == LockReticle.COL_OUT_OF_RANGE, "Rahmen grau ausserhalb der Reichweite")
+	var err := _cam_error_deg(d.get_lock_point())
+	_check(err < 1.0, "Kamera bleibt auch ausser Reichweite auf dem Ziel (%.2f°)" % err)
+	Input.action_press("attack")
+	await _frames(3)
+	_check(g.combat_hook() == null, "kein Seil ausserhalb der Reichweite")
+	# zurueck in Reichweite, LMB noch gehalten -> Seil greift
+	g.global_position = Vector3(0, 1.2, -12.0)
+	g.reset_physics_interpolation()
+	await _process_frames(2)
+	await _frames(3)
+	var ch := g.combat_hook()
+	_check(ch != null and ch.target == d and hud.reticle.in_range, "zurueck in Reichweite: Rahmen farbig, Seil greift")
+	Input.action_release("attack")
+	await _frames(10)
+	await _action_event("hard_lock")
+	_check(g.hard_lock == null, "Klick loest den Lock")
+	await _frames(60)
 
 
 func _test_rope_bending() -> void:
@@ -472,6 +637,7 @@ func _place(pos: Vector3, yaw: float, pitch: float) -> void:
 	g.velocity = Vector3.ZERO
 	g._yaw = yaw
 	g._pitch = pitch
+	g._vel_history.clear()
 	g._set_state(GuardianController.State.NORMAL)
 	g.reset_physics_interpolation()
 	await _process_frames(2)
@@ -497,6 +663,20 @@ func _action_event(action: String) -> void:
 	Input.parse_input_event(up)
 	await _process_frames(1)
 	await _frames(1)
+
+
+## Winkel zwischen Kamera-Blick (Fadenkreuz) und Richtung Kamera -> Punkt.
+func _cam_error_deg(p: Vector3) -> float:
+	var v := p - g.camera.global_position
+	return rad_to_deg(g.aim_forward().angle_to(v.normalized()))
+
+
+## Dummy nach einem K.o.-Treffer sofort wieder aufstellen.
+func _revive(d: TrainingDummy) -> void:
+	d.hp = d.max_hp
+	d._down_t = 0.0
+	d._mesh.visible = true
+	d._update_label()
 
 
 func _lname(n: Node) -> String:

@@ -12,7 +12,8 @@ extends Node
 ##
 ## MOMENTUM-SCHADEN (compute_damage):
 ##   Schaden = min_damage * Combo * Speed-Faktor * Sturzflug-Faktor * Punkt-Faktor
-##   (Geschwindigkeit = Momentum beim Schlag-Start, also im Anflug)
+##   (Geschwindigkeit = staerkstes Anflug-Momentum kurz vor dem Schlag-Start,
+##    siehe GuardianController.momentum_velocity())
 ##   - Speed-Faktor = 1 + speed_scale * (Speed / speed_ref) ^ speed_exponent
 ##     Stillstand = 1x (minimaler Base-Damage), Vorbeiflug steigt ueberproportional.
 ##   - Sturzflug-Faktor (High-Hit): nur bei steilem Fall von oben
@@ -100,7 +101,7 @@ func _start_slash() -> void:
 	phase = Phase.WINDUP
 	_t = 0.0
 	if _guardian:
-		_swing_velocity = _guardian.velocity
+		_swing_velocity = _guardian.momentum_velocity()
 		_swing_turbo = _guardian.is_turbo()
 	_queued = false
 	_already_hit.clear()
