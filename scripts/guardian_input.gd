@@ -7,8 +7,11 @@ extends RefCounted
 ## Layout:
 ##   LMB / X ............ attack        (Jagdmesser-Slash)
 ##   RMB / LT ........... grapple       (straffes Seil, halten; Doppel-Tap = 2. Haken)
-##   Tab / R3 ........... target_lock   (Target-Lock + Combat-Grapple / Sturzangriff)
-##   Shift / L3 ......... sprint        (Boden: Sprint, am Seil: Turbo-Pull)
+##   W / S am Seil ...... Winde: W = Turbo-Einzug, S = Bremse (A/D = seitlich)
+##   Mausrad-Klick / R3 . hard_lock     (Ziel einrasten / loesen)
+##   Mausrad / D-Pad L-R  lock_next / lock_prev (Ziel-Wechsel)
+##   LMB mit Hard-Lock .. halten = Combat-Seil + heranziehen, loslassen = Schlag
+##   Shift / L3 ......... sprint
 ##   Space / A .......... jump
 ##   P / View ........... toggle_camera (First-/Third-Person)
 ##   R / Menu ........... reset
@@ -29,7 +32,9 @@ const BINDINGS := {
 	"sprint": [["key", KEY_SHIFT], ["joy", JOY_BUTTON_LEFT_STICK]],
 	"attack": [["mouse", MOUSE_BUTTON_LEFT], ["joy", JOY_BUTTON_X]],
 	"grapple": [["mouse", MOUSE_BUTTON_RIGHT], ["axis", JOY_AXIS_TRIGGER_LEFT, 1.0]],
-	"target_lock": [["key", KEY_TAB], ["joy", JOY_BUTTON_RIGHT_STICK]],
+	"hard_lock": [["mouse", MOUSE_BUTTON_MIDDLE], ["joy", JOY_BUTTON_RIGHT_STICK]],
+	"lock_next": [["mouse", MOUSE_BUTTON_WHEEL_DOWN], ["joy", JOY_BUTTON_DPAD_RIGHT]],
+	"lock_prev": [["mouse", MOUSE_BUTTON_WHEEL_UP], ["joy", JOY_BUTTON_DPAD_LEFT]],
 	"toggle_camera": [["key", KEY_P], ["joy", JOY_BUTTON_BACK]],
 	"reset": [["key", KEY_R], ["joy", JOY_BUTTON_START]],
 }

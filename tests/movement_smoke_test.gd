@@ -25,10 +25,14 @@ func _run() -> void:
 	await _test_aim_and_lock()
 	await _test_taut_rope_base_pull()
 	await _test_turbo_pull()
+	await _test_brake()
 	await _test_rope_steering()
 	await _test_dual_hooks()
 	await _test_hip_alternation()
-	await _test_target_lock_dive()
+	await _test_hard_lock_toggle()
+	await _test_lock_cycling_giant()
+	await _test_lock_slash_loop()
+	await _test_giant_point_hit()
 	await _test_rope_bending()
 	await _test_wallrun()
 
@@ -45,7 +49,7 @@ func _test_basic_movement() -> void:
 	await _frames(60)
 	var hs := Vector2(g.velocity.x, g.velocity.z).length()
 	_check(hs >= 23.0, "Sprint = richtiges Rennen (%.1f m/s)" % hs)
-	_check(not g.is_turbo(), "Shift am Boden ohne Seil = Sprint, kein Turbo")
+	_check(not g.is_turbo(), "Sprint am Boden loest keinen Turbo aus")
 	_check(not InputMap.has_action("dash"), "kein Dash mehr")
 	_release_all()
 	await _frames(60)
@@ -110,7 +114,7 @@ func _test_aim_and_lock() -> void:
 	var d := _dummy_near(Vector3(0, 1, -40))
 	await _place(Vector3(2.0, 1.2, -10.0), 0.0, -0.02)
 	await _frames(3)
-	_check(g.lock_target == d, "Lock-Kegel erfasst Dummy trotz Versatz (Tab)")
+	_check(g.lock_target == d, "Lock-Kegel erfasst Dummy trotz Versatz")
 	_check(g.aim_kind != GuardianController.AimKind.ENEMY, "RMB-Seil rastet NICHT auf den Gegner ein")
 	await _place(Vector3(0, 1.2, 0), 0.0, 0.0)
 	var t := _closest_tower()
@@ -135,8 +139,8 @@ func _test_aim_and_lock() -> void:
 
 
 func _test_taut_rope_base_pull() -> void:
-	print("Straffes Seil & Base-Pull (0.5x)")
-	var r := await _grapple_tower(false, 60)
+	print("Straffes Seil & Base-Pull (0.4)")
+	var r := await _grapple_tower("", 60)
 	var base: float = g.reel_speed * g.reel_base_mult
 	_check(absf(r.approach - base) < 2.5, "zieht gleichmaessig mit Basis-Speed ein (%.1f / %.1f m/s)" % [r.approach, base])
 	_check(r.max_slack < 0.05, "Seil laesst nie nach (max. Durchhang %.2f m)" % r.max_slack)
@@ -145,7 +149,7 @@ func _test_taut_rope_base_pull() -> void:
 	var h := _active_hook()
 	_check(h != null and h.active, "Seil loest sich nicht von selbst (nach 4 s)")
 	var dist := g.global_position.distance_to(h.pivot()) if h else INF
-	_check(dist < g.hang_length + 1.5, "haengt am Ende ruhig am Anker (%.1f m)" % dist)
+	_check(dist < g.hang_length + 3.0, "haengt am Ende nah am Anker (%.1f m, pendelt frei)" % dist)
 	_check(g.velocity.length() < 25.0, "kein Glitschen / Wegschleudern am Anker (%.1f m/s)" % g.velocity.length())
 	Input.action_release("grapple")
 	await _frames(2)
@@ -156,17 +160,28 @@ func _test_taut_rope_base_pull() -> void:
 
 
 func _test_turbo_pull() -> void:
-	print("Turbo-Pull (Shift am Seil)")
-	var b := await _grapple_tower(false, 40)
+	print("Turbo-Einzug (W am Seil)")
+	var b := await _grapple_tower("", 40)
 	Input.action_release("grapple")
 	await _frames(20)
-	var t := await _grapple_tower(true, 40)
-	_check(t.turbo_seen, "Shift am Seil schaltet auf Turbo")
+	var t := await _grapple_tower("move_forward", 40)
+	_check(t.turbo_seen, "W am Seil schaltet auf Turbo")
 	var ratio: float = t.approach / maxf(b.approach, 0.01)
-	_check(ratio > 2.4 and ratio < 3.1, "Turbo = %.2fx Basis (%.1f vs %.1f m/s)" % [ratio, t.approach, b.approach])
-	_check(t.covered > b.covered * 2.0, "zieht mit Wucht heran (%.1f m vs %.1f m)" % [t.covered, b.covered])
-	Input.action_release("grapple")
-	Input.action_release("sprint")
+	_check(ratio > 2.2 and ratio < 2.8, "Turbo = %.2fx Basis (%.1f vs %.1f m/s)" % [ratio, t.approach, b.approach])
+	_check(t.covered > b.covered * 1.8, "zieht deutlich schneller heran (%.1f m vs %.1f m)" % [t.covered, b.covered])
+	_release_all()
+	await _frames(int(g.double_tap_window * 60.0) + 3)
+	await _frames(120)
+
+
+func _test_brake() -> void:
+	print("Bremse (S am Seil)")
+	var r := await _grapple_tower("move_back", 60)
+	_check(r.brake_seen, "S am Seil bremst die Winde")
+	_check(r.approach < g.reel_speed * g.reel_brake_mult + 1.0,
+			"Winde fast still (%.1f m/s, Basis %.1f)" % [r.approach, g.reel_speed * g.reel_base_mult])
+	_check(r.max_slack < 0.1, "Seil bleibt dabei straff (max. Durchhang %.2f m)" % r.max_slack)
+	_release_all()
 	await _frames(int(g.double_tap_window * 60.0) + 3)
 	await _frames(120)
 
@@ -213,10 +228,10 @@ func _test_dual_hooks() -> void:
 	_check(g.hooks_out() == 2 and g.hook_left.active and g.hook_right.active,
 			"Doppel-Tap: beide Hueft-Haken draussen")
 	_check(not g.hook_left.slack and not g.hook_right.slack, "beide Seile straff")
-	Input.action_press("sprint")
+	Input.action_press("move_forward")
 	await _frames(2)
-	_check(g.is_turbo(), "Turbo-Pull wirkt auch mit zwei Haken")
-	Input.action_release("sprint")
+	_check(g.is_turbo(), "W-Turbo wirkt auch mit zwei Haken")
+	Input.action_release("move_forward")
 	await _frames(25)  # einpendeln (inkl. Aufprall an der Decke)
 	var jitter := 0.0
 	var prev := g.velocity
@@ -251,32 +266,108 @@ func _test_hip_alternation() -> void:
 			"Klicks wechseln zwischen linker und rechter Huefte")
 
 
-func _test_target_lock_dive() -> void:
-	print("Target-Lock / Combat-Grapple (Tab)")
-	var d := _dummy_near(Vector3(0, 18, -60))
-	await _place(Vector3(0, 1.2, -30), 0.0, 0.0)
+func _test_hard_lock_toggle() -> void:
+	print("Hard-Lock (Mausrad-Klick / R3)")
+	var d := _dummy_near(Vector3(0, 1, -40))
+	await _place(Vector3(0, 1.2, -10.0), 0.0, -0.02)
+	await _frames(3)
+	_check(InputMap.has_action("hard_lock") and not InputMap.has_action("target_lock"), "Lock liegt auf eigener Taste (Tab entfernt)")
+	await _action_event("hard_lock")
+	_check(g.hard_lock == d, "Mausrad-Klick rastet das Ziel ein")
+	g._yaw += 0.6
+	await _process_frames(2)
+	await _frames(3)
+	_check(g.hard_lock == d, "Lock haelt, auch wenn das Fadenkreuz wegschaut")
+	await _action_event("hard_lock")
+	_check(g.hard_lock == null, "erneuter Klick loest den Hard-Lock")
+
+
+func _test_lock_cycling_giant() -> void:
+	print("Ziel-Wechsel per Mausrad (Riese)")
+	var giant: TrainingGiant = arena.get_node("TrainingGiant")
+	await _place(Vector3(0, 6.0, -62.0), 0.0, 0.0)
+	_aim_at(giant.global_position + Vector3(0, 9.5, 1.3))
+	await _process_frames(2)
+	await _frames(3)
+	var cands := g.lock_candidates()
+	var labels := []
+	for c in cands:
+		if c is LockPoint:
+			labels.append((c as LockPoint).label)
+	print("    sichtbare Punkte: ", labels)
+	_check(labels.size() >= 4, "Riese bietet mehrere anvisierbare Punkte (%d)" % labels.size())
+	_check(not labels.has("Nacken"), "Nacken von vorne verdeckt (Sichtlinie)")
+	await _action_event("lock_next")
+	var first := g.hard_lock
+	_check(first is LockPoint, "erster Scroll rastet einen Punkt ein (%s)" % _lname(first))
+	var seen := {}
+	for i in cands.size():
+		seen[_lname(g.hard_lock)] = true
+		await _action_event("lock_next")
+	_check(seen.size() == cands.size(), "Mausrad schaltet durch alle Punkte (%d)" % seen.size())
+	_check(g.hard_lock == first, "nach einer Runde wieder am Anfang (Wrap)")
+	await _action_event("lock_prev")
+	_check(g.hard_lock != first, "Mausrad hoch schaltet zurueck (%s)" % _lname(g.hard_lock))
+	await _action_event("hard_lock")
+
+
+func _test_lock_slash_loop() -> void:
+	print("Combat-Grapple & Slash-Loop (LMB mit Hard-Lock)")
+	var d := _dummy_near(Vector3(0, 1, -40))
+	await _place(Vector3(0, 26.0, -33.0), 0.0, 0.0)
 	_aim_at(d.get_lock_point())
 	await _process_frames(2)
 	await _frames(3)
-	_check(g.lock_target == d, "Ziel im Lock")
+	await _action_event("hard_lock")
+	_check(g.hard_lock == d, "Ziel von oben im Hard-Lock")
 	var hits := d.hits_taken
-	await _tap("target_lock")
-	var dived := false
-	for i in 150:
+	Input.action_press("attack")
+	await _frames(2)
+	_check(g.combat_hook() != null and g.knife.phase == KnifeCombat.Phase.IDLE,
+			"LMB halten: Seil zum Ziel, noch kein Schlag")
+	Input.action_press("move_forward")  # W-Turbo in den Sturzflug
+	var released := false
+	for i in 120:
 		await physics_frame
-		var ch := g.combat_hook()
-		if ch and ch.phase == GrappleHook.Phase.DIVE:
-			dived = true
-		if d.hits_taken > hits:
+		if g.global_position.distance_to(d.get_lock_point()) < 3.2:
+			Input.action_release("attack")
+			released = true
 			break
-	await _frames(1)
-	_check(dived, "Sturzangriff von oben ausgeloest")
-	_check(d.hits_taken > hits, "Sturzangriff trifft")
+	Input.action_release("move_forward")
+	await _frames(12)
+	_check(released, "Guardian wird zum Ziel herangezogen")
+	_check(g.combat_hook() == null, "LMB loslassen loest das Combat-Seil")
+	_check(d.hits_taken > hits, "Schlag im Anflug trifft")
 	var lh: Dictionary = g.knife.last_hit
 	_check(not lh.is_empty() and lh.is_plunge and lh.damage > 100.0,
-			"High-Hit mit Plunge-Bonus (%.0f Schaden, x%.1f)" % [lh.get("damage", 0.0), lh.get("plunge_mult", 0.0)])
-	_check(g.combat_hook() == null and g.velocity.y > 5.0, "Abprall nach oben, Angriff abgeschlossen")
+			"High-Speed-Sturzflug = High-Hit (%.0f Schaden, Plunge x%.1f)" % [lh.get("damage", 0.0), lh.get("plunge_mult", 0.0)])
+	await _action_event("hard_lock")
 	await _frames(120)
+
+
+func _test_giant_point_hit() -> void:
+	print("Lock-Punkt-Treffer am Riesen")
+	var giant: TrainingGiant = arena.get_node("TrainingGiant")
+	await _place(Vector3(0, 8.0, -70.0), 0.0, 0.0)
+	var chest: LockPoint = giant.get_node("LP_Brust")
+	_aim_at(chest.global_position)
+	await _process_frames(2)
+	await _frames(3)
+	await _action_event("hard_lock")
+	if g.hard_lock != chest:
+		g.hard_lock = chest  # Kegel kann einen Nachbarpunkt bevorzugen
+	var hits := giant.hits_taken
+	Input.action_press("attack")
+	for i in 150:
+		await physics_frame
+		if g.global_position.distance_to(chest.global_position) < 3.0:
+			break
+	Input.action_release("attack")
+	await _frames(12)
+	_check(giant.hits_taken > hits, "Riese nimmt Schaden ueber den Lock-Punkt")
+	_check(g.knife.last_hit.get("point", "") == "Brust", "Treffer wird dem Punkt zugeordnet (%s)" % g.knife.last_hit.get("point", "-"))
+	await _action_event("hard_lock")
+	await _frames(90)
 
 
 func _test_rope_bending() -> void:
@@ -335,7 +426,7 @@ func _test_wallrun() -> void:
 
 # --- Helpers --------------------------------------------------------------
 ## Seil an den naechsten Turm, n Frames halten. Misst Annaeherung, Durchhang, Ruck.
-func _grapple_tower(turbo: bool, n: int) -> Dictionary:
+func _grapple_tower(key: String, n: int) -> Dictionary:
 	await _place(Vector3(0, 1.2, 0), 0.0, 0.0)
 	var t := _closest_tower()
 	_aim_at(t.pos + Vector3(0, t.size.y * 0.3, 0))
@@ -345,18 +436,20 @@ func _grapple_tower(turbo: bool, n: int) -> Dictionary:
 	var d0 := g.global_position.distance_to(a)
 	Input.action_press("grapple")
 	await _frames(2)
-	if turbo:
-		Input.action_press("sprint")
+	if key != "":
+		Input.action_press(key)
 	var h := _active_hook()
 	var max_slack := 0.0
 	var max_jolt := 0.0
 	var turbo_seen := false
+	var brake_seen := false
 	var prev := g.velocity
 	var approach_sum := 0.0
 	var approach_n := 0
 	for i in n:
 		await physics_frame
 		turbo_seen = turbo_seen or g.is_turbo()
+		brake_seen = brake_seen or g.is_braking()
 		var dist := g.global_position.distance_to(h.pivot())
 		max_slack = maxf(max_slack, h.rope_length - dist)
 		if i > 10:
@@ -368,7 +461,7 @@ func _grapple_tower(turbo: bool, n: int) -> Dictionary:
 	return {
 		"approach": approach_sum / maxf(approach_n, 1),
 		"covered": d0 - g.global_position.distance_to(a),
-		"max_slack": max_slack, "max_jolt": max_jolt, "turbo_seen": turbo_seen,
+		"max_slack": max_slack, "max_jolt": max_jolt, "turbo_seen": turbo_seen, "brake_seen": brake_seen,
 	}
 
 
@@ -390,6 +483,26 @@ func _aim_at(p: Vector3) -> void:
 	var v := p - cam
 	g._yaw = atan2(-v.x, -v.z)
 	g._pitch = atan2(v.y, Vector2(v.x, v.z).length())
+
+
+func _action_event(action: String) -> void:
+	var ev := InputEventAction.new()
+	ev.action = action
+	ev.pressed = true
+	Input.parse_input_event(ev)
+	await _process_frames(1)
+	var up := InputEventAction.new()
+	up.action = action
+	up.pressed = false
+	Input.parse_input_event(up)
+	await _process_frames(1)
+	await _frames(1)
+
+
+func _lname(n: Node) -> String:
+	if n is LockPoint:
+		return (n as LockPoint).label
+	return n.name if n else "-"
 
 
 func _active_hook() -> GrappleHook:
@@ -432,7 +545,7 @@ func _tap(action: String, frames := 2) -> void:
 
 func _release_all() -> void:
 	for a in ["move_forward", "move_back", "move_left", "move_right", "sprint", "jump",
-			"attack", "grapple", "target_lock"]:
+			"attack", "grapple"]:
 		Input.action_release(a)
 
 

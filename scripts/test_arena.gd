@@ -7,6 +7,7 @@ extends Node3D
 
 const GRID_SHADER := preload("res://assets/shaders/proto_grid.gdshader")
 const DUMMY_SCENE := preload("res://scenes/props/training_dummy.tscn")
+const GIANT_SPOT := Vector3(0, 0, -95)
 
 ## Trainings-Dummies (Boden, Plattform-Hoehe, frei schwebend).
 const DUMMY_SPOTS := [
@@ -115,3 +116,8 @@ func _spawn_dummies() -> void:
 		var d := DUMMY_SCENE.instantiate() as Node3D
 		d.position = p
 		add_child(d)
+	# Grosser Test-Gegner mit mehreren Lock-Punkten (Hard-Lock + Mausrad-Wechsel)
+	var giant := TrainingGiant.new()
+	giant.name = "TrainingGiant"
+	giant.position = GIANT_SPOT
+	add_child(giant)

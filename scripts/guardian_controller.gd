@@ -3,16 +3,17 @@ extends CharacterBody3D
 ## Guardian – High-Speed-Controller.
 ##
 ## Movement: Laufen / Sprint / Air-Control / Wall-Run.
-## Shift:    kontextsensitiv – am Boden Sprint, am Seil Turbo-Pull.
+## Shift:    Sprint am Boden.
 ## Seile:    Dual-Hip-Grapple auf RMB / LT (zwei Werfer an linker + rechter Huefte).
 ##           - Klick/Halten: Haken der naechsten freien Huefte (abwechselnd L/R).
-##             Das Seil ist straff und zieht per Winde gleichmaessig ein
-##             (Basis 0.5x). Shift = Turbo-Pull (2.75x der Basis).
+##             Straffes Seil, Winde zieht mit Basis 0.4 ein.
+##           - Winde am Seil: W = Turbo (2.5x Basis), S = Bremse (~0.05).
+##             A / D = seitlich quer zum Seil ausweichen / schwingen.
 ##           - Doppel-Tap: zweiter Haken an zweiter Oberflaeche, zwei straffe Seile.
-##           - WASD am Seil: tangential am Pendel steuern.
-##           Seile wickeln sich um Geometrie (Bending) und loesen sich nie von
-##           selbst. Physikalisch ehrlich: kein Auto-Schleudern, kein Fixieren.
-## Lock:     Tab / R3 = Target-Lock + Combat-Grapple (Anflug + Sturzangriff).
+##           Seile wickeln sich um Geometrie (Bending) und loesen sich nie von selbst.
+## Lock:     Mausrad-Klick / R3 = Hard-Lock an/aus, Mausrad = Ziel-Wechsel.
+##           Mit Hard-Lock: LMB halten = Seil zum Lock-Punkt + heranziehen,
+##           LMB loslassen = Messer-Schlag im Anflug (Momentum-Schaden).
 ## Kampf:    LMB = Jagdmesser (siehe KnifeCombat).
 ## Kamera:   P = Third-/First-Person, nahtlos ueberblendet.
 ##
@@ -52,37 +53,33 @@ enum AimKind { NONE, POINT, ENEMY }
 @export var grapple_range := 70.0
 ## Referenz-Einzugsgeschwindigkeit der Winde (m/s) ...
 @export var reel_speed := 24.0
-## ... automatischer Basis-Einzug = 50 % davon: gleichmaessig und kontrolliert.
-@export var reel_base_mult := 0.5
-## Shift am Seil: Turbo-Pull = Faktor auf den Basis-Einzug (2.5 - 3x).
-@export var reel_turbo_mult := 2.75
+## ... automatischer Basis-Einzug = 40 % davon: straff, haelt die Distanz, zieht nicht aggressiv.
+@export var reel_base_mult := 0.4
+## W am Seil: Turbo-Einzug = Faktor auf den Basis-Einzug.
+@export var reel_turbo_mult := 2.5
+## S am Seil: Bremse – Winde laeuft nur noch mit diesem Anteil (fast regungslos haengen).
+@export var reel_brake_mult := 0.05
+## Beim Bremsen wird auch der eigene Schwung gedaempft (1/s), damit man ruhig haengt.
+@export var brake_damping := 3.5
 ## Wie hart das straffe Seil auf die Einzugsgeschwindigkeit nachregelt.
 @export var rope_response := 40.0
 ## Ab dieser Restlaenge stoppt die Winde – man haengt am Anker.
 @export var hang_length := 2.5
 @export var rope_min_length := 1.5
-## WASD am Seil: tangentiale Steuerung von Flugbahn/Pendel.
+## A / D am Seil: seitliche Steuerung quer zum Seil.
 @export var rope_steer_accel := 24.0
 ## Nach dem Loslassen haengt das Seil so lange locker (keine Kraft) – Fenster fuer den Doppel-Tap.
 @export var double_tap_window := 0.2
 ## Mindestabstand der beiden Anker beim Doppel-Tap (zweite Oberflaeche).
 @export var dual_min_separation := 2.5
 
-# --- Target-Lock / Combat-Grapple (Tab / R3) -------------------------------
+# --- Hard-Lock / Combat-Grapple (Mausrad-Klick / R3, LMB) ----------------
 @export_group("Combat Grapple")
-@export var combat_pull_accel := 140.0
-@export var combat_pull_impulse := 12.0
-@export var combat_pull_max_speed := 48.0
-## Zielfuehrung im Anflug: daempft seitliches Driften -> kein Umkreisen.
-@export var pull_homing := 3.0
-## Sturzangriff loest aus, wenn man naeher als dive_trigger_radius am Anflugpunkt ist
-## oder ihn innerhalb von pull_arrive_window passiert hat.
-@export var dive_trigger_radius := 3.5
-@export var pull_arrive_window := 10.0
-@export var dive_height := 4.0
-@export var dive_speed := 42.0
-@export var dive_hit_radius := 2.4
-@export var dive_bounce := 13.0
+## Windengeschwindigkeit des Combat-Seils = reel_speed * combat_reel_mult (W/S wirken auch hier).
+@export var combat_reel_mult := 1.0
+@export var combat_pull_impulse := 6.0
+## Hard-Lock bleibt bis zu grapple_range * diesem Faktor bestehen.
+@export var lock_keep_range_mult := 1.3
 
 # --- Auto-Aim -------------------------------------------------------------
 @export_group("Aim Assist")
@@ -143,8 +140,10 @@ var hook_right := GrappleHook.new(GrappleHook.Kind.HIP_RIGHT)
 var hooks: Array[GrappleHook] = [hook_left, hook_right]
 
 var aim_normal := Vector3.ZERO
-## Gegner im Lock-Kegel (Tab / R3) – unabhaengig vom Seil-Ziel.
+## Bester Lock-Kandidat im Kegel um das Fadenkreuz (unsichtbar).
 var lock_target: Node3D = null
+## Eingerasteter Hard-Lock (Mausrad-Klick / R3). Bleibt bis zum Loesen bestehen.
+var hard_lock: Node3D = null
 
 var _yaw := 0.0
 var _pitch := -0.15
@@ -186,6 +185,12 @@ func _unhandled_input(event: InputEvent) -> void:
 		_pitch = clampf(_pitch - event.relative.y * mouse_sensitivity, -1.45, 1.35)
 	elif event.is_action_pressed("toggle_camera"):
 		toggle_camera()
+	elif event.is_action_pressed("hard_lock"):
+		toggle_hard_lock()
+	elif event.is_action_pressed("lock_next"):
+		cycle_lock(1)
+	elif event.is_action_pressed("lock_prev"):
+		cycle_lock(-1)
 	elif event.is_action_pressed("ui_cancel"):
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	elif event is InputEventMouseButton and event.pressed \
@@ -246,9 +251,9 @@ func _physics_process(delta: float) -> void:
 		_respawn()
 		return
 
+	_update_hard_lock()
 	_handle_hook_input(delta)
-	if Input.is_action_just_pressed("attack"):
-		knife.request_slash()
+	_handle_attack_input()
 	_refresh_state()
 
 	match state:
@@ -375,8 +380,6 @@ func _post_move(wish: Vector3, delta: float) -> void:
 				_wall_lost_t += delta
 				if _wall_lost_t > 0.1:
 					_set_state(State.NORMAL)
-		State.HOOKED:
-			_check_dive_contact()
 
 
 func _check_wallrun_start(wish: Vector3) -> void:
@@ -403,14 +406,6 @@ func _handle_hook_input(delta: float) -> void:
 	if _grace_t >= 0.0:
 		_grace_t += delta
 
-	# Tab / R3: Target-Lock + Combat-Grapple (nochmal druecken = abbrechen)
-	if Input.is_action_just_pressed("target_lock"):
-		var ch := combat_hook()
-		if ch:
-			ch.release()
-		else:
-			_fire_combat_hook()
-
 	# RMB / LT: straffes Seil
 	if Input.is_action_just_pressed("grapple"):
 		if _grace_t >= 0.0 and rope_hooks_out() > 0:
@@ -433,6 +428,22 @@ func _handle_hook_input(delta: float) -> void:
 	if _grace_t > double_tap_window:
 		_grace_t = -1.0
 		_release_rope_hooks()
+
+
+## LMB: ohne Hard-Lock normaler Slash. Mit Hard-Lock: Halten = Combat-Seil zum
+## Lock-Punkt + heranziehen, Loslassen = Messer-Schlag im Anflug.
+func _handle_attack_input() -> void:
+	if Input.is_action_just_pressed("attack"):
+		if hard_lock != null and _fire_combat_hook():
+			return
+		knife.request_slash()
+	elif Input.is_action_just_released("attack"):
+		var ch := combat_hook()
+		if ch:
+			var lock := hard_lock if is_instance_valid(hard_lock) else null
+			ch.release()
+			knife.request_slash(lock)
+			_refresh_state()
 
 
 func rope_hooks_out() -> int:
@@ -489,33 +500,41 @@ func _fire_second_hook() -> void:
 	_refresh_state()
 
 
-func _fire_combat_hook() -> void:
-	if lock_target == null:
-		return
+## Combat-Seil zum Hard-Lock-Punkt. Sind beide Hueften belegt, wird das aeltere
+## RMB-Seil dafuer eingeholt.
+func _fire_combat_hook() -> bool:
+	if not is_instance_valid(hard_lock) or global_position.distance_to(_lock_point_of(hard_lock)) > grapple_range:
+		return false
 	var h := _take_free_hip()
 	if h == null:
-		return
-	var p := _lock_point_of(lock_target)
-	h.attach(p, Vector3.ZERO, lock_target, global_position, true)
+		h = hook_left if _primary == hook_right else hook_right
+		h.release()
+	var p := _lock_point_of(hard_lock)
+	h.attach(p, Vector3.ZERO, hard_lock, global_position, true)
 	velocity += (p - global_position).normalized() * combat_pull_impulse
 	if is_on_floor():
 		velocity.y = maxf(velocity.y, 6.0)
 	_refresh_state()
+	return true
 
 
-## Shift mit aktivem (straffem) Seil -> Turbo-Pull.
+## W am Seil -> Turbo-Einzug.
 func is_turbo() -> bool:
-	if not Input.is_action_pressed("sprint"):
-		return false
-	for h in hooks:
-		if h.active and not h.slack and not h.combat:
-			return true
-	return false
+	return Input.is_action_pressed("move_forward") and any_hook_active()
 
 
-## Aktuelle Einzugsgeschwindigkeit der Winde (m/s).
-func winch_speed() -> float:
-	return reel_speed * reel_base_mult * (reel_turbo_mult if is_turbo() else 1.0)
+## S am Seil (ohne W) -> Bremse.
+func is_braking() -> bool:
+	return Input.is_action_pressed("move_back") and not Input.is_action_pressed("move_forward") \
+			and any_hook_active()
+
+
+## Aktuelle Einzugsgeschwindigkeit der Winde (m/s) fuer ein Seil.
+func winch_speed(h: GrappleHook = null) -> float:
+	if is_braking():
+		return reel_speed * reel_brake_mult
+	var base := reel_speed * (combat_reel_mult if h != null and h.combat else reel_base_mult)
+	return base * (reel_turbo_mult if is_turbo() else 1.0)
 
 
 func _process_hooked(wish: Vector3, delta: float) -> void:
@@ -523,20 +542,14 @@ func _process_hooked(wish: Vector3, delta: float) -> void:
 	var ex: Array[RID] = [get_rid()]
 	for h in hooks:
 		if h.active:
-			h.phase_time += delta
 			h.update_bends(space, global_position, velocity, ex, grapple_mask)
 
-	var ch := combat_hook()
-	if ch and ch.phase == GrappleHook.Phase.DIVE:
-		_process_dive(ch)
-		return
-
 	velocity.y -= gravity * delta
-	_rope_steer(wish, delta)
+	_rope_steer(delta)
+	if is_braking():
+		velocity *= exp(-brake_damping * delta)
 	if is_on_floor():
 		_try_ground_jump()
-	if ch:
-		_combat_pull(ch, delta)
 	_solve_ropes(delta)
 
 
@@ -545,10 +558,10 @@ func _process_hooked(wish: Vector3, delta: float) -> void:
 func _solve_ropes(delta: float) -> void:
 	var v0 := velocity
 	var dv := Vector3.ZERO
-	var speed := winch_speed()
 	for h in hooks:
-		if not h.active or h.slack or h.combat:
+		if not h.active or h.slack:
 			continue
+		var speed := winch_speed(h)
 		var to := h.pivot() - global_position
 		var dist := to.length()
 		if dist < 0.01:
@@ -558,10 +571,10 @@ func _solve_ropes(delta: float) -> void:
 		h.rope_length = minf(h.rope_length, dist)
 		# Winde: Laenge schrumpft gleichmaessig. Kommt der Spieler nicht hinterher
 		# (z. B. zweites Seil haelt dagegen), laeuft sie nicht weiter davon -> kein Zerren.
-		var max_gap := maxf(speed / rope_response, 0.1)
+		var max_gap := maxf(speed / rope_response, 0.05)
 		if h.rope_length > hang_length:
 			h.rope_length = maxf(h.rope_length - speed * delta, maxf(dist - max_gap, hang_length))
-		h.rope_length = clampf(h.rope_length, rope_min_length, grapple_range)
+		h.rope_length = clampf(h.rope_length, rope_min_length, grapple_range * lock_keep_range_mult)
 		var gap := dist - h.rope_length
 		if gap <= 0.0 and v0.dot(dir) >= 0.0:
 			continue
@@ -572,71 +585,21 @@ func _solve_ropes(delta: float) -> void:
 	velocity = v0 + dv
 
 
-## WASD am Seil: nur tangential zum Seil -> Pendel/Flugbahn steuern, ohne
-## gegen das Seil zu arbeiten.
-func _rope_steer(wish: Vector3, delta: float) -> void:
-	if wish == Vector3.ZERO:
+## A / D am Seil: seitlich quer zum Seil ausweichen / schwingen.
+## (W / S bedienen die Winde und steuern hier nicht.)
+func _rope_steer(delta: float) -> void:
+	var side := Input.get_axis("move_left", "move_right")
+	if absf(side) < 0.01:
 		return
+	var lateral := Basis(Vector3.UP, _yaw) * Vector3.RIGHT * side
 	var axis := Vector3.ZERO
 	for h in hooks:
 		if h.active and not h.slack:
 			axis += (h.pivot() - global_position).normalized()
-	if axis.length() < 0.01:
-		velocity += wish * rope_steer_accel * delta
-		return
-	axis = axis.normalized()
-	var tangent := wish - axis * wish.dot(axis)
-	velocity += tangent * rope_steer_accel * delta
-
-
-## Combat-Grapple: mit voller Wucht ueber das Ziel, dann Sturzangriff.
-func _combat_pull(h: GrappleHook, delta: float) -> void:
-	if not is_instance_valid(h.target):
-		h.release()
-		return
-	var goal := h.pivot()
-	if not h.has_bends():
-		goal = _lock_point_of(h.target) + Vector3.UP * dive_height
-	var to_goal := goal - global_position
-	var gdist := to_goal.length()
-	var gdir := to_goal / maxf(gdist, 0.001)
-	if velocity.dot(gdir) < combat_pull_max_speed:
-		velocity += gdir * combat_pull_accel * delta
-	var along := gdir * velocity.dot(gdir)
-	velocity = along + (velocity - along) * (1.0 - minf(pull_homing * delta, 1.0))
-	var passed := h.closest < pull_arrive_window and gdist > h.closest + 0.5
-	h.closest = minf(h.closest, gdist)
-	if not h.has_bends() and (gdist < dive_trigger_radius or passed):
-		h.set_phase(GrappleHook.Phase.DIVE)
-
-
-func _process_dive(h: GrappleHook) -> void:
-	if not is_instance_valid(h.target) or h.phase_time > 0.6:
-		h.release()
-		return
-	var to_t := _lock_point_of(h.target) - global_position
-	velocity = to_t.normalized() * dive_speed
-	if to_t.length() < dive_hit_radius:
-		_end_dive(h)
-
-
-func _end_dive(h: GrappleHook) -> void:
-	# Treffer mit voller Sturzflug-Geschwindigkeit -> Momentum-Schaden, dann Abprall.
-	knife.strike(h.target)
-	var away := Vector3(velocity.x, 0.0, velocity.z).normalized() * 4.0
-	velocity = away + Vector3.UP * dive_bounce
-	h.release()
-	_refresh_state()
-
-
-func _check_dive_contact() -> void:
-	var ch := combat_hook()
-	if ch == null or ch.phase != GrappleHook.Phase.DIVE:
-		return
-	for i in get_slide_collision_count():
-		if get_slide_collision(i).get_collider() == ch.target:
-			_end_dive(ch)
-			return
+	if axis.length() > 0.01:
+		axis = axis.normalized()
+		lateral -= axis * lateral.dot(axis)
+	velocity += lateral * rope_steer_accel * delta
 
 
 func _release_rope_hooks() -> void:
@@ -742,10 +705,7 @@ func _find_lock_target(space: PhysicsDirectSpaceState3D, start: Vector3, fwd: Ve
 		var score := perp / allowed + along * 0.002
 		if score >= best_score:
 			continue
-		# Sichtlinie pruefen
-		var hit := _ray(space, start, p)
-		if not hit.is_empty() and hit.collider != t \
-				and (hit.position as Vector3).distance_to(p) > 0.8:
+		if not _has_line_of_sight(space, start, t, p):
 			continue
 		best = t
 		best_score = score
@@ -761,6 +721,91 @@ func _is_lockable(t: Object) -> bool:
 
 
 # =========================================================================
+# Hard-Lock & Ziel-Wechsel
+# =========================================================================
+## Mausrad-Klick / R3: Ziel unterm Fadenkreuz einrasten bzw. Lock loesen.
+func toggle_hard_lock() -> void:
+	if hard_lock != null:
+		hard_lock = null
+	elif lock_target != null:
+		hard_lock = lock_target
+
+
+## Mausrad: durch alle anvisierbaren Ziele/Trefferpunkte schalten.
+## Ohne Lock rastet der erste Scroll das beste Ziel ein.
+func cycle_lock(step: int) -> void:
+	var list := lock_candidates()
+	if list.is_empty():
+		return
+	var i := list.find(hard_lock)
+	if i == -1:
+		hard_lock = list[0] if lock_target == null or not list.has(lock_target) else lock_target
+		return
+	hard_lock = list[posmod(i + step, list.size())]
+
+
+## Alle anvisierbaren Ziele in Reichweite mit Sichtlinie, sortiert nach Winkel
+## zum Fadenkreuz (naechstes zuerst).
+func lock_candidates() -> Array[Node3D]:
+	var cam_pos := camera.global_position
+	var fwd := aim_forward()
+	var start := cam_pos + fwd * maxf((global_position - cam_pos).dot(fwd), 0.0)
+	var space := get_world_3d().direct_space_state
+	var scored: Array = []
+	for n in get_tree().get_nodes_in_group("lock_target"):
+		var t := n as Node3D
+		if t == null or not _is_lockable(t):
+			continue
+		var p := _lock_point_of(t)
+		if global_position.distance_to(p) > grapple_range:
+			continue
+		var v := p - start
+		if v.dot(fwd) <= 0.0:
+			continue
+		if not _has_line_of_sight(space, start, t, p):
+			continue
+		scored.append([fwd.angle_to(v.normalized()), t])
+	scored.sort_custom(func(a, b): return a[0] < b[0])
+	var out: Array[Node3D] = []
+	for e in scored:
+		out.append(e[1])
+	return out
+
+
+func _update_hard_lock() -> void:
+	if hard_lock == null:
+		return
+	if not is_instance_valid(hard_lock) or not _is_lockable(hard_lock) \
+			or global_position.distance_to(_lock_point_of(hard_lock)) > grapple_range * lock_keep_range_mult:
+		hard_lock = null
+		var ch := combat_hook()
+		if ch:
+			ch.release()
+
+
+func _has_line_of_sight(space: PhysicsDirectSpaceState3D, from: Vector3, t: Node3D, p: Vector3) -> bool:
+	var hit := _ray(space, from, p)
+	if hit.is_empty():
+		return true
+	if (hit.position as Vector3).distance_to(p) <= 0.8:
+		return true
+	# Ziel ist selbst der Koerper (z. B. Dummy). Lock-Punkte auf einem grossen Koerper
+	# zaehlen nur, wenn der Strahl nahe am Punkt auftrifft (Nacken von vorne = verdeckt).
+	return hit.collider == t
+
+
+## Wer bekommt den Schaden? Ziel selbst (take_hit) oder Eltern eines LockPoints.
+static func hit_receiver_of(t: Node) -> Node:
+	if t == null:
+		return null
+	if t.has_method("take_hit"):
+		return t
+	if t.has_method("get_hit_receiver"):
+		return t.get_hit_receiver()
+	return null
+
+
+# =========================================================================
 # State / Respawn
 # =========================================================================
 func _set_state(new_state: State) -> void:
@@ -772,6 +817,7 @@ func _set_state(new_state: State) -> void:
 
 func _respawn() -> void:
 	_release_all_hooks()
+	hard_lock = null
 	global_position = _spawn
 	velocity = Vector3.ZERO
 	_set_state(State.NORMAL)

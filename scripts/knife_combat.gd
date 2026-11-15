@@ -6,8 +6,13 @@ extends Node
 ## der Blickrichtung. Blockiert das Movement nicht – der Flow bleibt erhalten.
 ## Ziele brauchen eine Methode `take_hit(damage: float, dir: Vector3, source: Node)`.
 ##
+## Lock-Slash: request_slash(lock_node) bindet den Schlag an einen Lock-Punkt
+## (Hard-Lock). Ist der Punkt waehrend der Active-Phase in lock_strike_reach,
+## trifft der Schlag ihn direkt (Anflug-Schlag) – inkl. damage_mult des Punkts.
+##
 ## MOMENTUM-SCHADEN (compute_damage):
-##   Schaden = min_damage * Combo * Speed-Faktor * Sturzflug-Faktor
+##   Schaden = min_damage * Combo * Speed-Faktor * Sturzflug-Faktor * Punkt-Faktor
+##   (Geschwindigkeit = Momentum beim Schlag-Start, also im Anflug)
 ##   - Speed-Faktor = 1 + speed_scale * (Speed / speed_ref) ^ speed_exponent
 ##     Stillstand = 1x (minimaler Base-Damage), Vorbeiflug steigt ueberproportional.
 ##   - Sturzflug-Faktor (High-Hit): nur bei steilem Fall von oben
@@ -46,6 +51,8 @@ enum Phase { IDLE, WINDUP, ACTIVE, RECOVERY }
 @export var hit_radius := 1.4
 @export var hit_reach := 1.7
 @export_flags_3d_physics var hit_mask := 1
+## Reichweite des Lock-Slashs (Spieler-Mitte bis Lock-Punkt).
+@export var lock_strike_reach := 4.0
 
 var phase: Phase = Phase.IDLE
 var combo_index := -1
@@ -60,6 +67,11 @@ var _since_last := 99.0
 var _queued := false
 var _already_hit: Dictionary = {}
 var _shape := SphereShape3D.new()
+var _lock: Node3D = null
+## Momentum im Moment des Schlag-Starts (Anflug) – Basis fuer den Schaden,
+## damit ein Aufprall in den Frames danach den Bonus nicht verschluckt.
+var _swing_velocity := Vector3.ZERO
+var _swing_turbo := false
 
 
 func _ready() -> void:
@@ -67,7 +79,8 @@ func _ready() -> void:
 	_shape.radius = hit_radius
 
 
-func request_slash() -> void:
+func request_slash(lock: Node3D = null) -> void:
+	_lock = lock
 	match phase:
 		Phase.IDLE, Phase.RECOVERY:
 			_start_slash()
@@ -86,6 +99,9 @@ func _start_slash() -> void:
 		combo_index = 0
 	phase = Phase.WINDUP
 	_t = 0.0
+	if _guardian:
+		_swing_velocity = _guardian.velocity
+		_swing_turbo = _guardian.is_turbo()
 	_queued = false
 	_already_hit.clear()
 	slash_started.emit(combo_index)
@@ -119,7 +135,17 @@ func _physics_process(delta: float) -> void:
 func _sweep_hits() -> void:
 	if _guardian == null:
 		return
+	var mult := combo_multipliers[combo_index] if combo_index >= 0 else 1.0
 	var dir := _guardian.aim_forward()
+	# Lock-Slash: direkter Treffer auf den Lock-Punkt im Anflug
+	if is_instance_valid(_lock):
+		var lp: Vector3 = _lock.get_lock_point() if _lock.has_method("get_lock_point") else _lock.global_position
+		dir = (lp - _guardian.global_position).normalized()
+		var receiver := GuardianController.hit_receiver_of(_lock)
+		if receiver and _guardian.global_position.distance_to(lp) <= lock_strike_reach \
+				and not _already_hit.has(receiver.get_instance_id()):
+			_already_hit[receiver.get_instance_id()] = true
+			_deal(receiver, mult, dir, _lock)
 	var center := _guardian.global_position + Vector3.UP * 0.4 + dir * hit_reach
 	var params := PhysicsShapeQueryParameters3D.new()
 	params.shape = _shape
@@ -127,7 +153,6 @@ func _sweep_hits() -> void:
 	params.collision_mask = hit_mask
 	params.exclude = [_guardian.get_rid()]
 	var results := _guardian.get_world_3d().direct_space_state.intersect_shape(params, 16)
-	var mult := combo_multipliers[combo_index] if combo_index >= 0 else 1.0
 	for r: Dictionary in results:
 		var col: Object = r.collider
 		if col == null or not col.has_method("take_hit"):
@@ -136,14 +161,10 @@ func _sweep_hits() -> void:
 		if _already_hit.has(id):
 			continue
 		_already_hit[id] = true
-		_deal(col as Node, mult, dir)
-
-
-## Direkter Treffer, z. B. am Ende eines Sturzangriffs (Combo-Faktor 1).
-func strike(target: Node) -> void:
-	if target == null or not target.has_method("take_hit"):
-		return
-	_deal(target, 1.0, _guardian.velocity.normalized())
+		# Treffer am Koerper des gelockten Ziels zaehlt fuer den Lock-Punkt.
+		var point: Node3D = _lock if is_instance_valid(_lock) \
+				and GuardianController.hit_receiver_of(_lock) == col else null
+		_deal(col as Node, mult, dir, point)
 
 
 ## Momentum-Schaden aus Geschwindigkeit (siehe Kopfkommentar).
@@ -167,8 +188,12 @@ func compute_damage(vel: Vector3, combo_mult := 1.0, turbo := false) -> Dictiona
 	}
 
 
-func _deal(target: Node, mult: float, dir: Vector3) -> void:
-	var info := compute_damage(_guardian.velocity, mult, _guardian.is_turbo())
+func _deal(target: Node, mult: float, dir: Vector3, point: Node3D = null) -> void:
+	var info := compute_damage(_swing_velocity, mult, _swing_turbo)
+	var point_mult: float = point.damage_mult if point is LockPoint else 1.0
+	info.damage *= point_mult
+	info["point_mult"] = point_mult
+	info["point"] = (point as LockPoint).label if point is LockPoint else ""
 	last_hit = info
 	target.take_hit(info.damage, dir, _guardian)
 	hit_landed.emit(target, info.damage, info)

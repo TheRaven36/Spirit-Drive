@@ -4,6 +4,35 @@ Neueste Einträge immer oben.
 
 ## Unreleased (Robin-Branch)
 
+### 2026-11-15 – Winde per W/S, Hard-Lock mit Mausrad, LMB-Angriffs-Loop v0.5
+**Winde**
+- **Base-Pull 0,4** (`reel_base_mult`): 0,4 × 24 m/s ≈ 9,6 m/s – straff, hält die Distanz, zieht nicht aggressiv.
+- **W am Seil = Turbo-Einzug** (2,5× Basis, `reel_turbo_mult`). Shift ist wieder reiner Sprint.
+- **S am Seil = Bremse**: Winde läuft nur noch mit 0,05 (≈ 1,2 m/s, `reel_brake_mult`), zusätzlich wird der
+  eigene Schwung gedämpft (`brake_damping`) – man hängt fast regungslos an der Leine.
+- **A / D** bleiben seitliches Ausweichen/Schwingen quer zum Seil.
+
+**Hard-Lock & Ziel-Wechsel**
+- **Mausrad-Klick / R3** rastet das Ziel im Lock-Kegel ein, erneut drücken löst. Der Lock hält, auch wenn das
+  Fadenkreuz wegschaut (bis 1,3× Grapple-Reichweite, `lock_keep_range_mult`).
+- **Mausrad hoch/runter** (Controller: D-Pad links/rechts) schaltet durch alle sichtbaren Ziele und
+  Trefferpunkte, sortiert nach Nähe zum Fadenkreuz. Verdeckte Punkte (z. B. Nacken von vorne) sind nicht wählbar.
+- HUD zeigt nur bei aktivem Hard-Lock eine Klammer mit Punktnamen.
+- Tab-Lock und der automatische Sturzangriff entfallen.
+
+**LMB-Angriffs-Loop**
+- Mit Hard-Lock: **LMB halten** schießt das Combat-Seil zum Lock-Punkt und zieht heran (Winde 1,0 × 24 m/s,
+  W-Turbo/S-Bremse wirken auch hier). **LMB loslassen** löst das Seil und führt den Schlag im Anflug aus.
+- Ohne Hard-Lock: LMB = normaler Slash wie bisher.
+- Schaden nutzt das **Momentum beim Schlag-Start** (nicht erst nach einem Aufprall) – Speed-Faktor und
+  exponentieller Plunge-Bonus wie definiert. Treffer werden dem Lock-Punkt zugeordnet (`damage_mult` pro Punkt
+  als Haken für Schwachstellen/Rüstung).
+
+**Test-Arena**
+- **Trainings-Riese** (~14 m, 3000 HP) bei (0, 0, -95) mit 7 Lock-Punkten: Kopf, Nacken, Brust, Schultern, Knie.
+- Neue Klasse `LockPoint` (Marker3D) für beliebige anvisierbare Trefferpunkte an Gegnern.
+- Smoke-Test: 65 Checks.
+
 ### 2026-11-15 – Grapple- & Kampf-Fundament v0.4 (straffes Seil, Turbo-Pull, Momentum-Schaden)
 **Entfernt**
 - **Slingshot und Tactical Nest** komplett entfernt – kein Auto-Schleudern, kein automatisches Fixieren mehr.

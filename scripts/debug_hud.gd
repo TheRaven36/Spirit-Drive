@@ -2,7 +2,9 @@ extends CanvasLayer
 ## Debug-HUD (clean): nur Fadenkreuz + Infotext.
 ## Der Auto-Aim arbeitet unsichtbar im Hintergrund – Seil und Trefferpunkt
 ## sieht der Spieler direkt in der Welt. Das Fadenkreuz faerbt sich nur dezent:
-## gruen = Seil-Ziel, orange = Gegner im Lock (Tab bereit).
+## gruen = Seil-Ziel, orange = Gegner/Trefferpunkt im Lock-Kegel.
+## Nur bei aktivem Hard-Lock (Mausrad-Klick) markiert eine Klammer den
+## eingerasteten Punkt – sonst bleibt das Bild clean.
 
 @export var guardian_path: NodePath
 
@@ -15,6 +17,7 @@ var _guardian: GuardianController
 var _crosshair: Label
 var _info: Label
 var _hooks: Label
+var _lock: Label
 
 
 func _ready() -> void:
@@ -24,6 +27,11 @@ func _ready() -> void:
 	_crosshair.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
 	_crosshair.grow_horizontal = Control.GROW_DIRECTION_BOTH
 	_crosshair.grow_vertical = Control.GROW_DIRECTION_BOTH
+
+	_lock = _make_label("[    ]", 30)
+	_lock.size = Vector2(120, 70)
+	_lock.modulate = COL_ENEMY
+	_lock.visible = false
 
 	_info = _make_label("", 16)
 	_info.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
@@ -35,8 +43,9 @@ func _ready() -> void:
 	_hooks.position.y -= 90
 
 	var help := _make_label(
-			"WASD Laufen / am Seil steuern | Shift Sprint (am Seil: Turbo-Pull) | Space Sprung | P Kamera\n"
-			+ "LMB Messer | RMB halten Seil | RMB Doppel-Tap = 2. Haken | Tab Target-Lock / Sturzangriff | R Reset", 14)
+			"WASD Laufen | Shift Sprint | Space Sprung | P Kamera | RMB halten Seil (Doppel-Tap = 2. Haken)\n"
+			+ "Am Seil: W Turbo, S Bremse, A/D seitlich | Mausrad-Klick Hard-Lock, Mausrad Ziel-Wechsel | "
+			+ "LMB (mit Lock) halten = ranziehen, loslassen = Schlag | R Reset", 14)
 	help.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	help.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT)
 	help.position += Vector2(16, -56)
@@ -65,9 +74,20 @@ func _process(_delta: float) -> void:
 		col = COL_POINT
 	_crosshair.modulate = col
 
-	var extra := "   TURBO" if g.is_turbo() else ""
+	var extra := ""
+	if g.is_turbo():
+		extra = "   TURBO"
+	elif g.is_braking():
+		extra = "   BREMSE"
 	if g.combat_hook():
-		extra = "   DIVE"
+		extra += "   ANGRIFF"
+
+	var hl := g.hard_lock
+	_lock.visible = hl != null and is_instance_valid(hl) \
+			and not g.camera.is_position_behind(g._lock_point_of(hl))
+	if _lock.visible:
+		_lock.text = "[    ]\n%s" % ((hl as LockPoint).label if hl is LockPoint else hl.name)
+		_lock.position = g.camera.unproject_position(g._lock_point_of(hl)) - Vector2(60, 22)
 	_hooks.text = "%s L   %s R%s" % [_dot(g.hook_left.active), _dot(g.hook_right.active), extra]
 
 	var v := g.velocity
@@ -87,6 +107,8 @@ func _hit_text(h: Dictionary) -> String:
 	if h.is_empty():
 		return "-"
 	var t := "%d  (Speed x%.1f" % [h.damage, h.speed_mult]
+	if h.get("point", "") != "":
+		t = "%d @ %s  (Speed x%.1f" % [h.damage, h.point, h.speed_mult]
 	if h.is_plunge:
 		t += ", PLUNGE x%.1f" % h.plunge_mult
 	return t + ")"

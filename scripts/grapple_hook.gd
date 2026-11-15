@@ -10,7 +10,6 @@ extends RefCounted
 ## Der letzte Knickpunkt ist der aktuelle physikalische Pivot.
 
 enum Kind { HIP_LEFT, HIP_RIGHT }
-enum Phase { PULL, DIVE, TETHER }
 
 const BEND_OFFSET := 0.12   # Knickpunkt leicht von der Kante weg
 const BEND_EPS := 0.35      # Treffer so nah am Pivot zaehlen nicht als Hindernis
@@ -18,10 +17,9 @@ const MAX_BENDS := 8
 
 var kind: Kind
 var active := false
-## true = Combat-Grapple (Tab): Anflug ueber das Ziel + Sturzangriff.
-## false = normales Seil (RMB): straffes Seil mit Winde.
+## true = Combat-Grapple (Hard-Lock + LMB halten): Seil zum Lock-Punkt, eigene Windengeschwindigkeit.
+## false = normales Seil (RMB).
 var combat := false
-var phase: Phase = Phase.TETHER
 var target: Node3D = null
 var target_offset := Vector3.ZERO
 var anchor := Vector3.ZERO
@@ -31,9 +29,6 @@ var slack := false
 var bends: Array[Vector3] = []
 var rope_length := 0.0      # freie Laenge vom Pivot zum Spieler
 var attach_height := 0.0
-var phase_time := 0.0
-## Naechste bisher erreichte Distanz zum Zielpunkt im Einzug (fuer "vorbei geflogen").
-var closest := INF
 
 var _bend_lengths: Array[float] = []
 var _bend_planes: Array[Vector3] = []   # Normale * Seite der Wickel-Ebene
@@ -57,9 +52,6 @@ func attach(point: Vector3, surface_normal: Vector3, hit_target: Node3D, player_
 	_bend_planes.clear()
 	rope_length = player_pos.distance_to(point)
 	attach_height = player_pos.y
-	phase = Phase.PULL if is_combat else Phase.TETHER
-	phase_time = 0.0
-	closest = INF
 
 
 func release() -> void:
@@ -70,12 +62,6 @@ func release() -> void:
 	bends.clear()
 	_bend_lengths.clear()
 	_bend_planes.clear()
-
-
-func set_phase(p: Phase) -> void:
-	phase = p
-	phase_time = 0.0
-	closest = INF
 
 
 func anchor_world() -> Vector3:
@@ -127,7 +113,6 @@ func update_bends(space: PhysicsDirectSpaceState3D, pos: Vector3, velocity: Vect
 			bends.pop_back()
 			_bend_planes.pop_back()
 			rope_length += _bend_lengths.pop_back()
-			closest = INF  # Pivot hat gewechselt
 			return
 
 	# 2) Wickeln: Geometrie zwischen Spieler und Pivot?
@@ -150,7 +135,6 @@ func update_bends(space: PhysicsDirectSpaceState3D, pos: Vector3, velocity: Vect
 		var side := signf(n.dot(velocity))
 		plane_dir = n * (side if side != 0.0 else 1.0)
 	bends.append(new_bend)
-	closest = INF  # Pivot hat gewechselt
 	_bend_lengths.append(seg)
 	_bend_planes.append(plane_dir)
 	# Freie Laenge nie kuerzer als die echte Distanz -> kein Ruck beim Wickeln.
