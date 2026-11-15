@@ -44,7 +44,7 @@ func _ready() -> void:
 
 	var help := _make_label(
 			"WASD Laufen | Shift Sprint | Space Sprung | P Kamera | RMB halten Seil (Doppel-Tap = 2. Haken)\n"
-			+ "Am Seil: W Turbo, S Bremse, A/D seitlich | LMB halten = Gegner unterm Fadenkreuz greifen, "
+			+ "Am Seil: W Turbo, S starres Seil, A/D seitlich | LMB halten = Gegner unterm Fadenkreuz greifen, "
 			+ "loslassen = Schlag\nMausrad-Klick Ziel waehlen + Kamera-Snap (halten = loesen), "
 			+ "Mausrad Trefferpunkt-Wechsel | R Reset", 14)
 	help.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
@@ -78,8 +78,8 @@ func _process(_delta: float) -> void:
 	var extra := ""
 	if g.is_turbo():
 		extra = "   TURBO"
-	elif g.is_braking():
-		extra = "   BREMSE"
+	elif g.is_rope_rigid():
+		extra = "   STARR"
 	if g.combat_hook():
 		extra += "   ANGRIFF"
 

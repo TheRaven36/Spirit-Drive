@@ -7,7 +7,8 @@ extends CharacterBody3D
 ## Seile:    Dual-Hip-Grapple auf RMB / LT (zwei Werfer an linker + rechter Huefte).
 ##           - Klick/Halten: Haken der naechsten freien Huefte (abwechselnd L/R).
 ##             Straffes Seil, Winde zieht mit Basis 0.4 ein.
-##           - Winde am Seil: W = Turbo (2.5x Basis), S = Bremse (~0.05).
+##           - Winde am Seil: W = Turbo (2.5x Basis), S = starres Seil (Laenge fix,
+##             Winde steht, Schwung bleibt erhalten – reines Pendeln auf festem Radius).
 ##             A / D = seitlich quer zum Seil ausweichen / schwingen.
 ##           - Doppel-Tap: zweiter Haken an zweiter Oberflaeche, zwei straffe Seile.
 ##           Seile wickeln sich um Geometrie (Bending) und loesen sich nie von selbst.
@@ -65,10 +66,8 @@ enum AimKind { NONE, POINT, ENEMY }
 @export var reel_base_mult := 0.4
 ## W am Seil: Turbo-Einzug = Faktor auf den Basis-Einzug.
 @export var reel_turbo_mult := 2.5
-## S am Seil: Bremse – Winde laeuft nur noch mit diesem Anteil (fast regungslos haengen).
-@export var reel_brake_mult := 0.05
-## Beim Bremsen wird auch der eigene Schwung gedaempft (1/s), damit man ruhig haengt.
-@export var brake_damping := 3.5
+## S am Seil = starres Seil: Laenge wird eingefroren (kein Einholen, kein Nachlassen),
+## kein Daempfen – der Spieler pendelt verlustfrei auf festem Radius um den Pivot.
 ## Wie hart das straffe Seil auf die Einzugsgeschwindigkeit nachregelt.
 @export var rope_response := 40.0
 ## Ab dieser Restlaenge stoppt die Winde – man haengt am Anker.
@@ -636,16 +635,16 @@ func is_turbo() -> bool:
 	return Input.is_action_pressed("move_forward") and any_hook_active()
 
 
-## S am Seil (ohne W) -> Bremse.
-func is_braking() -> bool:
+## S am Seil (ohne W) -> starres Seil (feste Laenge, Winde steht).
+func is_rope_rigid() -> bool:
 	return Input.is_action_pressed("move_back") and not Input.is_action_pressed("move_forward") \
 			and any_hook_active()
 
 
-## Aktuelle Einzugsgeschwindigkeit der Winde (m/s) fuer ein Seil.
+## Aktuelle Einzugsgeschwindigkeit der Winde (m/s) fuer ein Seil (0 bei starrem Seil).
 func winch_speed(h: GrappleHook = null) -> float:
-	if is_braking():
-		return reel_speed * reel_brake_mult
+	if is_rope_rigid():
+		return 0.0
 	var base := reel_speed * (combat_reel_mult if h != null and h.combat else reel_base_mult)
 	return base * (reel_turbo_mult if is_turbo() else 1.0)
 
@@ -659,8 +658,6 @@ func _process_hooked(wish: Vector3, delta: float) -> void:
 
 	velocity.y -= gravity * delta
 	_rope_steer(delta)
-	if is_braking():
-		velocity *= exp(-brake_damping * delta)
 	if is_on_floor():
 		_try_ground_jump()
 	_solve_ropes(delta)
@@ -668,9 +665,13 @@ func _process_hooked(wish: Vector3, delta: float) -> void:
 
 ## Straffe Seile mit Winde. Alle Seile werden aus derselben Ausgangs-
 ## Geschwindigkeit geloest und summiert -> zwei Seile kaempfen nicht gegeneinander.
+## Starres Seil (S): Laenge bleibt exakt, wie sie ist. Das Seil nimmt nur die nach
+## aussen gerichtete Radial-Geschwindigkeit weg (Pendel-Constraint) – der tangentiale
+## Schwung bleibt vollstaendig erhalten. Innerhalb des Radius haengt es locker.
 func _solve_ropes(delta: float) -> void:
 	var v0 := velocity
 	var dv := Vector3.ZERO
+	var rigid := is_rope_rigid()
 	for h in hooks:
 		if not h.active or h.slack:
 			continue
@@ -680,18 +681,23 @@ func _solve_ropes(delta: float) -> void:
 		if dist < 0.01:
 			continue
 		var dir := to / dist
-		# Straff: das Seil laesst nie nach.
-		h.rope_length = minf(h.rope_length, dist)
-		# Winde: Laenge schrumpft gleichmaessig. Kommt der Spieler nicht hinterher
-		# (z. B. zweites Seil haelt dagegen), laeuft sie nicht weiter davon -> kein Zerren.
-		var max_gap := maxf(speed / rope_response, 0.05)
-		if h.rope_length > hang_length:
-			h.rope_length = maxf(h.rope_length - speed * delta, maxf(dist - max_gap, hang_length))
+		if not rigid:
+			# Straff: das Seil laesst nie nach.
+			h.rope_length = minf(h.rope_length, dist)
+			# Winde: Laenge schrumpft gleichmaessig. Kommt der Spieler nicht hinterher
+			# (z. B. zweites Seil haelt dagegen), laeuft sie nicht weiter davon -> kein Zerren.
+			var max_gap := maxf(speed / rope_response, 0.05)
+			if h.rope_length > hang_length:
+				h.rope_length = maxf(h.rope_length - speed * delta, maxf(dist - max_gap, hang_length))
 		h.rope_length = clampf(h.rope_length, rope_min_length, grapple_range * lock_keep_range_mult)
 		var gap := dist - h.rope_length
 		if gap <= 0.0 and v0.dot(dir) >= 0.0:
 			continue
 		var desired := minf(gap * rope_response, maxf(speed, 4.0))
+		if rigid:
+			# Starr: innerhalb des Radius frei (genau bis an den Radius in diesem Frame),
+			# bei Ueberdehnung nur sanfte Positionskorrektur – keine Winde, kein Daempfen.
+			desired = gap / maxf(delta, 0.0001) if gap <= 0.0 else minf(gap * rope_response, 6.0)
 		var radial_in := v0.dot(dir)
 		if radial_in < desired:
 			dv += dir * (desired - radial_in)

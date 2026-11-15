@@ -30,6 +30,17 @@ extends Node
 ##   - Bosse definieren get_hit_cap() (z. B. Riese: 15 % der Max-HP) -> dicker Brocken,
 ##     aber nie ein billiger One-Hit-Kill.
 ##
+## PIERCING (Gegner mit mehreren Koerperteilen = mehrere CollisionShape3D):
+##   - Epizentrum = Einschlagpunkt des Primaer-Treffers (Lock-Punkt bzw. naechster
+##     Punkt des getroffenen Koerperteils). Das Primaer-Teil bekommt 100 %.
+##   - Alle anderen Teile, die die Flugbahn seit Schlag-Start im Schlag-Radius
+##     durchquert, bekommen Schaden proportional zur Distanz Epizentrum -> Teil:
+##       Anteil = pierce_secondary_max * (1 - d / pierce_radius) ^ pierce_falloff_exp
+##     (anliegendes Teil d~0 -> ~50 %, Rand bei ~3.6 m -> ~10 %, ab pierce_radius 0 %).
+##   - Nicht durchquerte Teile (ausserhalb der Bahn / hinter dem Einschlag) = 0 %.
+##   - Zusammen bekommen die Nebenteile hoechstens pierce_secondary_budget x Primaer.
+##   - debug_hits: Konsolen-Tabelle + farbige Marker (Epizentrum weiss, Teile rot->gelb).
+##
 ## HIT-WINDOW BEI HIGH-SPEED: Reichweite des Lock-Schlags und Kugel-Radius wachsen mit
 ##   dem Tempo, die Active-Phase verlaengert sich, und der Lock-Treffer prueft die ganze
 ##   Strecke seit dem letzten Physik-Frame (kein Durchtunneln bei 60+ m/s).
@@ -78,6 +89,21 @@ enum Phase { IDLE, WINDUP, ACTIVE, RECOVERY }
 ## Active-Phase verlaengert sich bei Tempo (s pro m/s, gedeckelt).
 @export var speed_active_per_mps := 0.0015
 @export var speed_active_max := 0.08
+@export_group("Piercing")
+## Maximaler Anteil fuer ein direkt anliegendes Nebenteil (d = 0).
+@export var pierce_secondary_max := 0.5
+## Ab dieser Distanz (m) vom Epizentrum gibt es keinen Splash-Schaden mehr.
+@export var pierce_radius := 4.5
+## Form der Abnahme: 1 = linear, > 1 = faellt schneller ab.
+@export var pierce_falloff_exp := 1.0
+## Summe aller Nebenteile <= Budget x Primaer-Schaden (kein Vervielfachen am Boss).
+@export var pierce_secondary_budget := 1.0
+## Abtastschritt (m) entlang der Flugbahn.
+@export var pierce_path_step := 0.4
+@export_group("Debug")
+## Konsolen-Ausgabe + Marker fuer Treffer-Zonen, Epizentrum und Prozentwerte.
+@export var debug_hits := true
+@export var debug_marker_time := 2.0
 
 var phase: Phase = Phase.IDLE
 var combo_index := -1
@@ -99,6 +125,18 @@ var _swing_velocity := Vector3.ZERO
 var _swing_turbo := false
 var _active_time := 0.12
 var _prev_pos := Vector3.ZERO
+## Flugbahn seit Schlag-Start (fuer Piercing).
+var _path := PackedVector3Array()
+## Piercing-Zustand des aktuellen Schlags.
+var _pierce_receiver: CollisionObject3D = null
+var _pierce_primary: CollisionShape3D = null
+var _pierce_epicenter := Vector3.ZERO
+var _pierce_damage := 0.0
+var _pierce_dir := Vector3.ZERO
+var _pierce_used := 0.0
+var _pierce_done: Dictionary = {}   # shape instance id -> true
+## Ergebnis des letzten Piercing-Schlags: [{part, pct, damage, dist, traversed, primary}]
+var last_pierce: Array = []
 
 
 func _ready() -> void:
@@ -134,6 +172,13 @@ func _start_slash() -> void:
 	_active_time = slash_active + minf(spd * speed_active_per_mps, speed_active_max)
 	_queued = false
 	_already_hit.clear()
+	_path.clear()
+	if _guardian:
+		_path.append(_guardian.global_position)
+	_pierce_receiver = null
+	_pierce_primary = null
+	_pierce_done.clear()
+	_pierce_used = 0.0
 	slash_started.emit(combo_index)
 
 
@@ -149,11 +194,13 @@ func _physics_process(delta: float) -> void:
 		Phase.WINDUP:
 			if _guardian:
 				_prev_pos = _guardian.global_position
+				_path.append(_prev_pos)
 			if _t >= slash_windup:
 				phase = Phase.ACTIVE
 		Phase.ACTIVE:
 			_sweep_hits()
 			if _t >= slash_windup + _active_time:
+				_finish_pierce()
 				phase = Phase.RECOVERY
 				_since_last = 0.0
 		Phase.RECOVERY:
@@ -172,6 +219,7 @@ func _sweep_hits() -> void:
 	var pos := _guardian.global_position
 	var seg_from := _prev_pos
 	_prev_pos = pos
+	_path.append(pos)
 	# Lock-Slash: direkter Treffer auf den Lock-Punkt im Anflug. Geprueft wird die ganze
 	# Strecke seit dem letzten Frame -> bei High-Speed kein Vorbeirauschen ohne Treffer.
 	if is_instance_valid(_lock):
@@ -182,7 +230,8 @@ func _sweep_hits() -> void:
 		if receiver and closest.distance_to(lp) <= strike_reach() \
 				and not _already_hit.has(receiver.get_instance_id()):
 			_already_hit[receiver.get_instance_id()] = true
-			_deal(receiver, mult, dir, _lock)
+			var dmg := _deal(receiver, mult, dir, _lock)
+			_begin_pierce(receiver, _part_of_point(receiver, _lock, lp), lp, dmg, dir)
 	_shape.radius = hit_radius + minf(_swing_velocity.length() * speed_radius_per_mps, speed_radius_max)
 	var center := pos + Vector3.UP * 0.4 + dir * hit_reach
 	var params := PhysicsShapeQueryParameters3D.new()
@@ -202,7 +251,217 @@ func _sweep_hits() -> void:
 		# Treffer am Koerper des gelockten Ziels zaehlt fuer den Lock-Punkt.
 		var point: Node3D = _lock if is_instance_valid(_lock) \
 				and GuardianController.hit_receiver_of(_lock) == col else null
-		_deal(col as Node, mult, dir, point)
+		var dmg := _deal(col as Node, mult, dir, point)
+		# Primaer-Teil = getroffene Shape, Epizentrum = naechster Punkt darauf.
+		var part := _shape_of(col, r.get("shape", -1))
+		if part != null:
+			_begin_pierce(col as Node, part, closest_point_on_part(part, pos), dmg, dir)
+	_update_pierce()
+
+
+# =========================================================================
+# Piercing: Multi-Hit mit Distanz-Abfall um das Epizentrum
+# =========================================================================
+## Koerperteile eines Ziels = direkte CollisionShape3D-Kinder.
+static func body_parts(receiver: Node) -> Array[CollisionShape3D]:
+	var out: Array[CollisionShape3D] = []
+	if receiver == null:
+		return out
+	for c in receiver.get_children():
+		if c is CollisionShape3D and not (c as CollisionShape3D).disabled:
+			out.append(c)
+	return out
+
+
+static func part_name(cs: CollisionShape3D) -> String:
+	return String(cs.name).trim_prefix("Shape_")
+
+
+## Abstand (m) von p zur Oberflaeche eines Koerperteils (0 = innen/anliegend).
+static func part_distance(cs: CollisionShape3D, p: Vector3) -> float:
+	return p.distance_to(closest_point_on_part(cs, p))
+
+
+## Naechster Punkt eines Koerperteils zu p (Box, Kugel, Kapsel, Zylinder exakt).
+static func closest_point_on_part(cs: CollisionShape3D, p: Vector3) -> Vector3:
+	var xf := cs.global_transform
+	var l := xf.affine_inverse() * p
+	var sh := cs.shape
+	var q := Vector3.ZERO
+	if sh is BoxShape3D:
+		var h := (sh as BoxShape3D).size * 0.5
+		q = l.clamp(-h, h)
+	elif sh is SphereShape3D:
+		var r := (sh as SphereShape3D).radius
+		q = l if l.length() <= r else l.normalized() * r
+	elif sh is CapsuleShape3D:
+		var c := sh as CapsuleShape3D
+		var axis := Vector3(0.0, clampf(l.y, -maxf(c.height * 0.5 - c.radius, 0.0),
+				maxf(c.height * 0.5 - c.radius, 0.0)), 0.0)
+		var off := l - axis
+		q = l if off.length() <= c.radius else axis + off.normalized() * c.radius
+	elif sh is CylinderShape3D:
+		var cy := sh as CylinderShape3D
+		var flat := Vector2(l.x, l.z)
+		if flat.length() > cy.radius:
+			flat = flat.normalized() * cy.radius
+		q = Vector3(flat.x, clampf(l.y, -cy.height * 0.5, cy.height * 0.5), flat.y)
+	else:
+		q = Vector3.ZERO
+	return xf * q
+
+
+## Splash-Anteil fuer ein Nebenteil mit Abstand d zum Epizentrum.
+func pierce_falloff(d: float) -> float:
+	var k := clampf(1.0 - d / maxf(pierce_radius, 0.01), 0.0, 1.0)
+	return pierce_secondary_max * pow(k, pierce_falloff_exp)
+
+
+## Schlag-Radius der Flugbahn (wie die Messer-Kugel, waechst mit dem Tempo).
+func pierce_path_radius() -> float:
+	return hit_radius + minf(_swing_velocity.length() * speed_radius_per_mps, speed_radius_max)
+
+
+func _shape_of(col: Object, shape_idx: int) -> CollisionShape3D:
+	if not (col is CollisionObject3D) or shape_idx < 0 or body_parts(col as Node).size() < 2:
+		return null
+	var co := col as CollisionObject3D
+	var owner_id := co.shape_find_owner(shape_idx)
+	var o := co.shape_owner_get_owner(owner_id)
+	return o as CollisionShape3D
+
+
+## Koerperteil eines Lock-Punkts: Eltern-Shape oder das naechste Teil.
+func _part_of_point(receiver: Node, point: Node3D, p: Vector3) -> CollisionShape3D:
+	var parts := body_parts(receiver)
+	if parts.size() < 2:
+		return null
+	if point != null and point.get_parent() is CollisionShape3D and parts.has(point.get_parent()):
+		return point.get_parent()
+	var best: CollisionShape3D = null
+	var best_d := INF
+	for cs in parts:
+		var d := part_distance(cs, p)
+		if d < best_d:
+			best_d = d
+			best = cs
+	return best
+
+
+func _begin_pierce(receiver: Node, primary: CollisionShape3D, epicenter: Vector3,
+		damage: float, dir: Vector3) -> void:
+	if primary == null or _pierce_receiver != null or not (receiver is CollisionObject3D):
+		return
+	_pierce_receiver = receiver
+	_pierce_primary = primary
+	_pierce_epicenter = epicenter
+	_pierce_damage = damage
+	_pierce_dir = dir
+	_pierce_used = 0.0
+	_pierce_done.clear()
+	_pierce_done[primary.get_instance_id()] = true
+	last_pierce = [{
+		"part": part_name(primary), "pct": 1.0, "damage": damage, "dist": 0.0,
+		"traversed": true, "primary": true,
+	}]
+	last_hit["part"] = part_name(primary)
+	last_hit["epicenter"] = epicenter
+	if debug_hits:
+		print("[PIERCE] Epizentrum %s  Primaer %s = 100 %% (%.0f)" % [
+				_v(epicenter), part_name(primary), damage])
+		_marker(epicenter, Color.WHITE, 0.35)
+		_marker(closest_point_on_part(primary, epicenter), Color(1, 0.15, 0.1), 0.3)
+	_update_pierce()
+
+
+## Prueft die bisherige Flugbahn: welche Nebenteile wurden durchquert?
+func _update_pierce() -> void:
+	if _pierce_receiver == null or not is_instance_valid(_pierce_receiver):
+		return
+	var radius := pierce_path_radius()
+	for cs in body_parts(_pierce_receiver):
+		var id := cs.get_instance_id()
+		if _pierce_done.has(id) or not _path_touches(cs, radius):
+			continue
+		_pierce_done[id] = true
+		var d := part_distance(cs, _pierce_epicenter)
+		var pct := minf(pierce_falloff(d), maxf(pierce_secondary_budget - _pierce_used, 0.0))
+		var dmg := _pierce_damage * pct
+		var entry := {"part": part_name(cs), "pct": pct, "damage": dmg, "dist": d,
+				"traversed": true, "primary": false}
+		last_pierce.append(entry)
+		if pct <= 0.0:
+			if debug_hits:
+				print("[PIERCE]   %-8s   0 %%  (%.2f m vom Epizentrum, ausserhalb Radius %.1f m)"
+						% [entry.part, d, pierce_radius])
+			continue
+		_pierce_used += pct
+		_pierce_receiver.take_hit(dmg, _pierce_dir, _guardian)
+		var info := {"damage": dmg, "point": entry.part, "pct": pct, "pierce": true}
+		hit_landed.emit(_pierce_receiver, dmg, info)
+		if debug_hits:
+			print("[PIERCE]   %-8s %3d %%  %.0f Schaden  (%.2f m vom Epizentrum)"
+					% [entry.part, roundi(pct * 100.0), dmg, d])
+			_marker(closest_point_on_part(cs, _pierce_epicenter),
+					Color(1.0, 0.2 + 0.8 * (1.0 - pct / maxf(pierce_secondary_max, 0.01)), 0.1), 0.25)
+
+
+func _path_touches(cs: CollisionShape3D, radius: float) -> bool:
+	for i in range(1, _path.size()):
+		var a := _path[i - 1]
+		var b := _path[i]
+		var steps := maxi(1, ceili(a.distance_to(b) / maxf(pierce_path_step, 0.05)))
+		for k in steps + 1:
+			if part_distance(cs, a.lerp(b, float(k) / float(steps))) <= radius:
+				return true
+	return false
+
+
+## Schlag-Ende: nicht durchquerte Teile als 0 % auflisten (Debug).
+func _finish_pierce() -> void:
+	if _pierce_receiver == null or not is_instance_valid(_pierce_receiver):
+		return
+	_update_pierce()
+	for cs in body_parts(_pierce_receiver):
+		if _pierce_done.has(cs.get_instance_id()):
+			continue
+		var d := part_distance(cs, _pierce_epicenter)
+		last_pierce.append({"part": part_name(cs), "pct": 0.0, "damage": 0.0, "dist": d,
+				"traversed": false, "primary": false})
+		if debug_hits:
+			print("[PIERCE]   %-8s   0 %%  (nicht durchquert, %.2f m vom Epizentrum)" % [part_name(cs), d])
+	if debug_hits:
+		var total := 0.0
+		for e: Dictionary in last_pierce:
+			total += e.damage
+		print("[PIERCE] Summe %.0f Schaden an %s" % [total, _pierce_receiver.name])
+
+
+func _v(p: Vector3) -> String:
+	return "(%.1f, %.1f, %.1f)" % [p.x, p.y, p.z]
+
+
+## Debug-Gizmo: kleine leuchtende Kugel, verschwindet nach debug_marker_time.
+func _marker(p: Vector3, col: Color, r: float) -> void:
+	if _guardian == null or not _guardian.is_inside_tree():
+		return
+	var mi := MeshInstance3D.new()
+	var m := SphereMesh.new()
+	m.radius = r
+	m.height = r * 2.0
+	m.radial_segments = 8
+	m.rings = 4
+	var mat := StandardMaterial3D.new()
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.albedo_color = col
+	mat.no_depth_test = true
+	m.material = mat
+	mi.mesh = m
+	mi.top_level = true
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_guardian.get_parent().add_child(mi)
+	mi.global_position = p
+	_guardian.get_tree().create_timer(debug_marker_time).timeout.connect(mi.queue_free)
 
 
 ## Reichweite des Lock-Schlags beim aktuellen Schlag-Momentum.
@@ -248,7 +507,7 @@ func compute_damage(vel: Vector3, combo_mult := 1.0, turbo := false) -> Dictiona
 	}
 
 
-func _deal(target: Node, mult: float, dir: Vector3, point: Node3D = null) -> void:
+func _deal(target: Node, mult: float, dir: Vector3, point: Node3D = null) -> float:
 	var info := compute_damage(_swing_velocity, mult, _swing_turbo)
 	var point_mult: float = point.damage_mult if point is LockPoint else 1.0
 	info["raw_damage"] = info.damage * point_mult
@@ -259,3 +518,4 @@ func _deal(target: Node, mult: float, dir: Vector3, point: Node3D = null) -> voi
 	last_hit = info
 	target.take_hit(info.damage, dir, _guardian)
 	hit_landed.emit(target, info.damage, info)
+	return info.damage

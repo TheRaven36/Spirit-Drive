@@ -4,6 +4,31 @@ Neueste Einträge immer oben.
 
 ## Unreleased (Robin-Branch)
 
+### 2026-11-16 – Starres Seil auf S, Piercing-Schaden mit Distanz-Abfall v0.8
+**S am Seil = starres Seil (ersetzt die Bremse)**
+- S friert die Seillänge ein: kein Einholen, kein Nachlassen, keine Schwung-Dämpfung mehr (`reel_brake_mult` und
+  `brake_damping` entfernt). Man pendelt verlustfrei auf festem Radius um den Pivot.
+- Das Seil nimmt nur die nach außen gerichtete Radial-Geschwindigkeit weg – der tangentiale Schwung bleibt komplett.
+  Innerhalb des Radius hängt es (wie ein echtes Seil) locker, bis es wieder spannt.
+- HUD zeigt `STARR` statt `BREMSE`. W (Turbo) hat weiterhin Vorrang vor S.
+
+**Piercing-Schlag: Multi-Hit mit dynamischem Distanz-Abfall**
+- Bei Gegnern mit mehreren Körperteilen (mehrere `CollisionShape3D`, z. B. Riese) wird die komplette Flugbahn seit
+  Schlag-Start ausgewertet.
+- **Epizentrum** = Einschlagpunkt des Primär-Treffers (Lock-Punkt bzw. nächster Punkt des getroffenen Teils).
+  Das Primär-Teil bekommt **100 %**.
+- Durchquerte Nebenteile: `Anteil = 0,5 × (1 − d / 4,5 m)` mit d = Abstand Epizentrum → Teil-Oberfläche.
+  Beispiel Sturz auf die Brust: Torso 100 % · Kopf 30 % (1,8 m) · Beine je 10 % (3,6 m) · Arme 0 % (nicht durchquert).
+- Nicht durchquerte Teile und Teile außerhalb des Radius bekommen 0 %. Alle Nebenteile zusammen höchstens
+  1× Primär-Schaden (`pierce_secondary_budget`) – kein Vervielfachen am Boss.
+- Tuning am Messer: `pierce_secondary_max`, `pierce_radius`, `pierce_falloff_exp`, `pierce_path_step`.
+- **Debug** (`debug_hits`, standardmäßig an): Konsolen-Tabelle `[PIERCE]` mit Epizentrum, Teil, Prozent, Schaden und
+  Distanz sowie farbige Marker in der Welt (weiß = Epizentrum, rot = Primär, orange→gelb = Nebenteile, 2 s sichtbar).
+
+**Tests**
+- Smoke-Test: 124 Checks (neu: Luft-Pendel mit S – Länge exakt, Radius fest, Energie bleibt erhalten; Vergleich ohne S;
+  Piercing-Sturz am Riesen mit Prozentwerten je Körperteil und HP-Summe).
+
 ### 2026-11-16 – Freie Kamera + Kamera-Snap, Auto-Clear, High-Speed-Hit-Window, Boss-Skalierung v0.7
 **Freie Kamera statt Dauer-Lock**
 - Der permanente Kamera-Lock ist raus – die Kamera bleibt beim Laufen und Schwingen komplett frei, auch mit

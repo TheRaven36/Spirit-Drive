@@ -25,7 +25,7 @@ func _run() -> void:
 	await _test_aim_and_lock()
 	await _test_taut_rope_base_pull()
 	await _test_turbo_pull()
-	await _test_brake()
+	await _test_rigid_rope()
 	await _test_rope_steering()
 	await _test_dual_hooks()
 	await _test_hip_alternation()
@@ -41,6 +41,7 @@ func _run() -> void:
 	await _test_free_camera_while_swinging()
 	await _test_high_speed_hit_window()
 	await _test_boss_damage_scaling()
+	await _test_piercing_falloff()
 	await _test_rope_bending()
 	await _test_wallrun()
 
@@ -182,17 +183,55 @@ func _test_turbo_pull() -> void:
 	await _frames(120)
 
 
-func _test_brake() -> void:
-	print("Bremse (S am Seil)")
+func _test_rigid_rope() -> void:
+	print("Starres Seil (S am Seil)")
 	var r := await _grapple_tower("move_back", 60)
-	_check(r.brake_seen, "S am Seil bremst die Winde")
-	_check(r.approach < g.reel_speed * g.reel_brake_mult + 1.0,
-			"Winde fast still (%.1f m/s, Basis %.1f)" % [r.approach, g.reel_speed * g.reel_base_mult])
-	_check(r.max_slack < 0.1, "Seil bleibt dabei straff (max. Durchhang %.2f m)" % r.max_slack)
+	_check(r.rigid_seen and g.winch_speed() == 0.0, "S am Seil = starres Seil, Winde steht")
+	_check(r.len_drift < 0.001, "Seillaenge bleibt fest, Winde holt nicht ein (Drift %.4f m)" % r.len_drift)
 	_release_all()
 	await _frames(int(g.double_tap_window * 60.0) + 3)
-	await _frames(120)
+	await _frames(60)
+	# Sauberes Pendel in der Luft: Anker 15 m ueber dem Spieler, 20 m/s seitlich.
+	var res_rigid := await _air_swing(true)
+	_check(res_rigid.len_drift < 0.001, "Seillaenge bleibt exakt (Drift %.4f m)" % res_rigid.len_drift)
+	_check(res_rigid.max_stretch < 0.15, "fester Radius, kein Dehnen (max. %.3f m)" % res_rigid.max_stretch)
+	_check(res_rigid.energy_ratio > 0.9 and res_rigid.energy_ratio < 1.05,
+			"Schwung bleibt erhalten (Energie %.0f %%)" % (res_rigid.energy_ratio * 100.0))
+	_check(res_rigid.swing_deg > 25.0, "pendelt sauber um den Anker (%.0f°)" % res_rigid.swing_deg)
+	var res_free := await _air_swing(false)
+	_check(res_free.len_drift > 1.0, "zum Vergleich ohne S: Winde holt ein (%.1f m)" % res_free.len_drift)
 
+
+## Pendel-Messung: Spieler haengt an einem Luft-Anker, optional mit S gehalten.
+func _air_swing(hold_s: bool) -> Dictionary:
+	await _place(Vector3(0, 70.0, 0), 0.0, 0.0)
+	var anchor := g.global_position + Vector3(0, 15.0, 0)
+	g.hook_left.attach(anchor, Vector3.DOWN, null, g.global_position)
+	g._primary = g.hook_left
+	g.velocity = Vector3(20.0, 0, 0)
+	g._refresh_state()
+	if hold_s:
+		Input.action_press("move_back")
+	await physics_frame
+	var h := g.hook_left
+	var l0 := h.rope_length
+	var e0 := 0.5 * g.velocity.length_squared() + g.gravity * g.global_position.y
+	var max_stretch := 0.0
+	var len_drift := 0.0
+	var start_dir := (g.global_position - anchor).normalized()
+	var max_angle := 0.0
+	for i in 50:
+		await physics_frame
+		max_stretch = maxf(max_stretch, g.global_position.distance_to(anchor) - l0)
+		len_drift = maxf(len_drift, absf(h.rope_length - l0))
+		max_angle = maxf(max_angle, start_dir.angle_to((g.global_position - anchor).normalized()))
+	var e1 := 0.5 * g.velocity.length_squared() + g.gravity * g.global_position.y
+	Input.action_release("move_back")
+	g._release_all_hooks()
+	await _place(Vector3(0, 1.2, -10.0), 0.0, 0.0)
+	await _frames(20)
+	return {"len_drift": len_drift, "max_stretch": max_stretch, "energy_ratio": e1 / e0,
+			"swing_deg": rad_to_deg(max_angle)}
 
 func _test_rope_steering() -> void:
 	print("WASD am Seil")
@@ -662,6 +701,61 @@ func _test_boss_damage_scaling() -> void:
 			"Treffer am Riesen gedeckelt (%.0f Schaden, roh %.0f)" % [dealt, k.last_hit.get("raw_damage", 0.0)])
 	await _frames(10)
 
+func _test_piercing_falloff() -> void:
+	print("Piercing-Sturz durch den Riesen (Distanz-Abfall)")
+	var k := g.knife
+	_check(absf(k.pierce_falloff(0.0) - 0.5) < 0.001 and absf(k.pierce_falloff(3.6) - 0.1) < 0.01
+			and k.pierce_falloff(k.pierce_radius + 0.1) == 0.0,
+			"Abfall: anliegend 50 %, Rand (3.6 m) 10 %, ausserhalb Radius 0 %")
+	var giant: TrainingGiant = arena.get_node("TrainingGiant")
+	giant.hp = giant.max_hp
+	giant._down_t = 0.0
+	var chest: LockPoint = giant.find_child("LP_Brust", true, false)
+	var x0 := giant.global_position + Vector3(0, 13.5, 2.3)  # senkrecht vor dem Riesen
+	await _place(x0, 0.0, 0.0)
+	var hp0 := giant.hp
+	var started := false
+	for i in 40:
+		g.velocity = Vector3(0, -40, 0)
+		if not started and i == 1:
+			k.request_slash(chest)
+			started = true
+		await physics_frame
+		if g.global_position.y < giant.global_position.y + 4.2:
+			g.velocity = Vector3.ZERO
+			break
+	await _frames(20)
+	var by := {}
+	for e: Dictionary in k.last_pierce:
+		by[e.part] = e
+	print("    ", ", ".join(k.last_pierce.map(func(e): return "%s %d%%" % [e.part, roundi(e.pct * 100.0)])))
+	var prim: Dictionary = by.get("Torso", {})
+	_check(not prim.is_empty() and prim.primary and prim.pct == 1.0,
+			"Primaer-Teil (Torso, Brust-Punkt) = 100 %% (%.0f)" % prim.get("damage", 0.0))
+	var head: Dictionary = by.get("Kopf", {})
+	var leg: Dictionary = by.get("BeinL", {})
+	var arm: Dictionary = by.get("ArmL", {})
+	_check(head.get("traversed", false) and head.pct > 0.2 and head.pct < 0.4,
+			"Kopf (%.2f m vom Epizentrum) = %d %%" % [head.get("dist", 0.0), roundi(head.get("pct", 0.0) * 100.0)])
+	_check(leg.get("traversed", false) and leg.pct > 0.05 and leg.pct < 0.15,
+			"Bein am Rand (%.2f m) = %d %%" % [leg.get("dist", 0.0), roundi(leg.get("pct", 0.0) * 100.0)])
+	_check(head.get("pct", 0.0) > leg.get("pct", 1.0), "naeher am Epizentrum = mehr Schaden")
+	_check(not arm.is_empty() and not arm.traversed and arm.pct == 0.0, "nicht durchquerte Arme = 0 %")
+	var expect := 0.0
+	var ok_scale := true
+	for e: Dictionary in k.last_pierce:
+		expect += e.damage
+		if not e.primary and absf(e.damage - prim.get("damage", 0.0) * e.pct) > 0.01:
+			ok_scale = false
+	_check(ok_scale, "Nebenschaden = Primaer-Schaden x Anteil")
+	_check(absf((hp0 - giant.hp) - expect) < 0.5,
+			"Riese verliert genau die Summe (%.0f HP)" % (hp0 - giant.hp))
+	_check(by.size() == TrainingGiant.PARTS.size(), "alle %d Koerperteile ausgewertet" % by.size())
+	g.release_hard_lock()
+	await _place(Vector3(0, 1.2, -10.0), 0.0, 0.0)
+	await _frames(30)
+
+
 func _test_rope_bending() -> void:
 	print("Seil-Bending")
 	await _place(Vector3(0, 1.2, 0), 0.0, 0.0)
@@ -734,14 +828,19 @@ func _grapple_tower(key: String, n: int) -> Dictionary:
 	var max_slack := 0.0
 	var max_jolt := 0.0
 	var turbo_seen := false
-	var brake_seen := false
+	var rigid_seen := false
 	var prev := g.velocity
 	var approach_sum := 0.0
 	var approach_n := 0
+	var l_start := -1.0
+	var len_drift := 0.0
 	for i in n:
 		await physics_frame
+		if l_start < 0.0:
+			l_start = h.rope_length
+		len_drift = maxf(len_drift, absf(h.rope_length - l_start))
 		turbo_seen = turbo_seen or g.is_turbo()
-		brake_seen = brake_seen or g.is_braking()
+		rigid_seen = rigid_seen or g.is_rope_rigid()
 		var dist := g.global_position.distance_to(h.pivot())
 		max_slack = maxf(max_slack, h.rope_length - dist)
 		if i > 10:
@@ -753,7 +852,7 @@ func _grapple_tower(key: String, n: int) -> Dictionary:
 	return {
 		"approach": approach_sum / maxf(approach_n, 1),
 		"covered": d0 - g.global_position.distance_to(a),
-		"max_slack": max_slack, "max_jolt": max_jolt, "turbo_seen": turbo_seen, "brake_seen": brake_seen,
+		"max_slack": max_slack, "max_jolt": max_jolt, "turbo_seen": turbo_seen, "rigid_seen": rigid_seen, "len_drift": len_drift,
 	}
 
 
