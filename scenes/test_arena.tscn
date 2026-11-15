@@ -4,6 +4,7 @@
 [ext_resource type="Script" path="res://scripts/guardian_controller.gd" id="2_guardian"]
 [ext_resource type="Script" path="res://scripts/debug_hud.gd" id="3_hud"]
 [ext_resource type="Shader" path="res://assets/shaders/proto_grid.gdshader" id="4_grid"]
+[ext_resource type="Script" path="res://scripts/knife_combat.gd" id="5_knife"]
 
 [sub_resource type="ProceduralSkyMaterial" id="SkyMat"]
 sky_top_color = Color(0.32, 0.5, 0.78, 1)
@@ -59,6 +60,19 @@ emission = Color(1, 0.7, 0.2, 1)
 material = SubResource("VisorMat")
 size = Vector3(0.5, 0.15, 0.2)
 
+[sub_resource type="StandardMaterial3D" id="BladeMat"]
+albedo_color = Color(0.85, 0.88, 0.92, 1)
+metallic = 0.9
+roughness = 0.25
+
+[sub_resource type="BoxMesh" id="BladeMesh"]
+material = SubResource("BladeMat")
+size = Vector3(0.05, 0.12, 0.6)
+
+[sub_resource type="BoxMesh" id="ViewBladeMesh"]
+material = SubResource("BladeMat")
+size = Vector3(0.025, 0.06, 0.32)
+
 [sub_resource type="SphereShape3D" id="CamProbe"]
 radius = 0.25
 
@@ -99,6 +113,16 @@ mesh = SubResource("GuardianMesh")
 position = Vector3(0, 0.5, -0.35)
 mesh = SubResource("VisorMesh")
 
+[node name="KnifePivot" type="Node3D" parent="Guardian/Visual"]
+position = Vector3(0, 0.15, 0)
+
+[node name="Blade" type="MeshInstance3D" parent="Guardian/Visual/KnifePivot"]
+position = Vector3(0.45, 0, -0.55)
+mesh = SubResource("BladeMesh")
+
+[node name="Knife" type="Node" parent="Guardian"]
+script = ExtResource("5_knife")
+
 [node name="CameraRig" type="Node3D" parent="Guardian"]
 
 [node name="Pitch" type="Node3D" parent="Guardian/CameraRig"]
@@ -113,6 +137,14 @@ margin = 0.1
 current = true
 fov = 75.0
 far = 1000.0
+
+[node name="ViewKnife" type="Node3D" parent="Guardian/CameraRig/Pitch/SpringArm3D/Camera3D"]
+position = Vector3(0.28, -0.3, -0.45)
+
+[node name="Blade" type="MeshInstance3D" parent="Guardian/CameraRig/Pitch/SpringArm3D/Camera3D/ViewKnife"]
+position = Vector3(0, 0, -0.2)
+cast_shadow = 0
+mesh = SubResource("ViewBladeMesh")
 
 [node name="HUD" type="CanvasLayer" parent="."]
 script = ExtResource("3_hud")

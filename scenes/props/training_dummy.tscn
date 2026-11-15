@@ -1,0 +1,28 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/training_dummy.gd" id="1_dummy"]
+
+[sub_resource type="CapsuleShape3D" id="DummyShape"]
+radius = 0.6
+height = 2.0
+
+[sub_resource type="CapsuleMesh" id="DummyMesh"]
+radius = 0.6
+height = 2.0
+
+[node name="TrainingDummy" type="StaticBody3D"]
+script = ExtResource("1_dummy")
+
+[node name="Shape" type="CollisionShape3D" parent="."]
+shape = SubResource("DummyShape")
+
+[node name="Mesh" type="MeshInstance3D" parent="."]
+mesh = SubResource("DummyMesh")
+
+[node name="HpLabel" type="Label3D" parent="."]
+position = Vector3(0, 1.5, 0)
+billboard = 1
+no_depth_test = true
+font_size = 48
+outline_size = 12
+text = "100"

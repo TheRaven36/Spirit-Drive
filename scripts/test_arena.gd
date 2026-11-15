@@ -6,6 +6,13 @@ extends Node3D
 ## Collision-Shapes. Seed ist fix -> Layout ist reproduzierbar.
 
 const GRID_SHADER := preload("res://assets/shaders/proto_grid.gdshader")
+const DUMMY_SCENE := preload("res://scenes/props/training_dummy.tscn")
+
+## Trainings-Dummies (Boden, Plattform-Hoehe, frei schwebend).
+const DUMMY_SPOTS := [
+	Vector3(7, 1, -20), Vector3(-7, 1, -24), Vector3(0, 1, -40),
+	Vector3(-100, 14, -70), Vector3(0, 18, -60), Vector3(25, 12, 15),
+]
 
 @export var layout_seed := 1337
 
@@ -15,6 +22,7 @@ var _boxes: Array[Dictionary] = []  # {pos: Vector3, size: Vector3, color: Color
 func _ready() -> void:
 	_build_layout()
 	_spawn_boxes()
+	_spawn_dummies()
 
 
 func _add_box(pos: Vector3, size: Vector3, color := Color.WHITE) -> void:
@@ -38,6 +46,12 @@ func _build_layout() -> void:
 	for i in 3:
 		var x := 16.0 + i * 9.0
 		_add_box(Vector3(x, 4.0, -30.0), Vector3(1.0, 8.0, 34.0), Color(1.0, 0.85, 0.7))
+
+	# Swing-Allee: zwei Saeulenreihen fuer Q/E-Momentum-Swings.
+	for i in 8:
+		var z := -25.0 - i * 16.0
+		for x in [-88.0, -112.0]:
+			_add_box(Vector3(x, 14.0, z), Vector3(3.0, 28.0, 3.0), Color(0.8, 0.85, 1.0))
 
 	# Schwebende Plattformen hoch oben.
 	for i in 8:
@@ -89,3 +103,10 @@ func _spawn_boxes() -> void:
 	mmi.name = "BlocksMultiMesh"
 	mmi.multimesh = mm
 	add_child(mmi)
+
+
+func _spawn_dummies() -> void:
+	for p: Vector3 in DUMMY_SPOTS:
+		var d := DUMMY_SCENE.instantiate() as Node3D
+		d.position = p
+		add_child(d)
