@@ -4,6 +4,28 @@ Neueste Einträge immer oben.
 
 ## Unreleased (Robin-Branch)
 
+### 2026-11-15 – Grapple- & Kampf-Fundament v0.4 (straffes Seil, Turbo-Pull, Momentum-Schaden)
+**Entfernt**
+- **Slingshot und Tactical Nest** komplett entfernt – kein Auto-Schleudern, kein automatisches Fixieren mehr.
+- Rebound-Kick am Anker und das Einholen per Leertaste entfallen (Seil arbeitet jetzt physikalisch ehrlich).
+
+**Neu / Geändert**
+- **Straffes Seil mit Winde (RMB / LT):** Das Seil lässt nie nach, reißt aber auch nicht weg. Eine Winde holt
+  gleichmäßig ein – **Basis = 0,5× von 24 m/s = 12 m/s** (`reel_speed`, `reel_base_mult`). Am Ende hängt man
+  ruhig am Anker (`hang_length`). Mehrere Seile werden gemeinsam gelöst und kämpfen nicht gegeneinander.
+- **Turbo-Pull (Shift am Seil):** **2,75× der Basis ≈ 33 m/s** (`reel_turbo_mult`), wirkt auf beide Hüft-Haken.
+- **Dual-Hooks:** RMB nutzt die nächste freie Hüfte (abwechselnd L/R); Doppel-Tap setzt den zweiten Haken –
+  zwei ganz normale straffe Seile, keine Sondermodi.
+- **WASD am Seil:** tangentiale Steuerung von Flugbahn/Pendel (`rope_steer_accel`), arbeitet nie gegen das Seil.
+- **Target-Lock auf Tab / R3:** Tab feuert den Combat-Grapple auf den Gegner im Lock-Kegel (Anflug über das Ziel →
+  Sturzangriff → Abprall). Tab erneut = abbrechen. RMB rastet nicht mehr auf Gegner ein.
+- **Momentum-Schaden (Messer):** `min_damage` im Stand (5), Speed-Faktor überproportional
+  (`1 + (v/20)^1.5`), **Plunge-Bonus** exponentiell bei steilem Sturz von oben (×2 je 10 m/s Fallspeed über
+  15 m/s, × Steilheit, ×1,25 im Turbo). Beispiel: Stand 5 · 40 m/s flach 19 · 40 m/s Sturz 217.
+  Treffer-Info (`speed_mult`, `plunge_mult`, `is_plunge`) als Basis für spätere Schwachstellen/Rüstung.
+- Dummies: 300 HP, zeigen den letzten Treffer an. HUD: Trefferzeile mit Speed-/Plunge-Faktor, TURBO/DIVE.
+- Smoke-Test: 49 Checks.
+
 ### 2026-11-15 – Dash entfernt, kontextsensitive Shift-Taste
 **Entfernt**
 - **Dash** restlos aus Code, Input-Map (Q / Strg / Xbox B) und HUD entfernt. Q, Strg und B sind frei.

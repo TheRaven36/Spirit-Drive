@@ -53,7 +53,7 @@ func _build_layout() -> void:
 		for x in [-88.0, -112.0]:
 			_add_box(Vector3(x, 14.0, z), Vector3(3.0, 28.0, 3.0), Color(0.8, 0.85, 1.0))
 
-	# Nest-Halle: enger Raum mit Decke fuer den Tactical Nest (Dual-Hook).
+	# Enge Halle mit Decke: Doppel-Haken in engen Raeumen testen.
 	_add_box(Vector3(-64.5, 4.5, 100.0), Vector3(1.0, 9.0, 20.0), Color(1.0, 0.9, 0.75))
 	_add_box(Vector3(-55.5, 4.5, 100.0), Vector3(1.0, 9.0, 20.0), Color(1.0, 0.9, 0.75))
 	_add_box(Vector3(-60.0, 9.5, 100.0), Vector3(10.0, 1.0, 20.0), Color(1.0, 0.9, 0.75))

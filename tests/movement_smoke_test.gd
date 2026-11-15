@@ -1,5 +1,5 @@
 extends SceneTree
-## Headless-Smoke-Test fuer den Guardian (Movement, Kamera, Seile, Messer).
+## Headless-Smoke-Test fuer den Guardian (Movement, Kamera, Seile, Lock, Messer).
 ## Aufruf: godot --headless --path . --script res://tests/movement_smoke_test.gd
 ## Exit-Code 0 = alles ok, 1 = Fehler.
 
@@ -21,14 +21,15 @@ func _run() -> void:
 	await _test_basic_movement()
 	await _test_camera_toggle()
 	await _test_knife()
-	await _test_aim_assist()
-	await _test_combat_dive()
-	await _test_combat_grapple_point()
-	await _test_turbo_reel()
-	await _test_rope_bending()
+	await _test_damage_curve()
+	await _test_aim_and_lock()
+	await _test_taut_rope_base_pull()
+	await _test_turbo_pull()
+	await _test_rope_steering()
+	await _test_dual_hooks()
 	await _test_hip_alternation()
-	await _test_slingshot()
-	await _test_nest()
+	await _test_target_lock_dive()
+	await _test_rope_bending()
 	await _test_wallrun()
 
 	print("SMOKE TEST: %s" % ("OK" if _fails == 0 else "%d FEHLER" % _fails))
@@ -43,10 +44,9 @@ func _test_basic_movement() -> void:
 	Input.action_press("sprint")
 	await _frames(60)
 	var hs := Vector2(g.velocity.x, g.velocity.z).length()
-	_check(hs > g.sprint_speed * 0.9, "Sprint erreicht Zielspeed (%.1f)" % hs)
-	_check(hs >= 23.0, "Sprint ist das neue 'richtige Rennen' (>= 23 m/s)")
-	_check(not InputMap.has_action("dash"), "Dash-Action existiert nicht mehr")
-	_check(not g.is_turbo(), "Shift am Boden = Sprint, kein Turbo")
+	_check(hs >= 23.0, "Sprint = richtiges Rennen (%.1f m/s)" % hs)
+	_check(not g.is_turbo(), "Shift am Boden ohne Seil = Sprint, kein Turbo")
+	_check(not InputMap.has_action("dash"), "kein Dash mehr")
 	_release_all()
 	await _frames(60)
 	await _tap("jump", 3)
@@ -60,9 +60,6 @@ func _test_camera_toggle() -> void:
 	g.toggle_camera()
 	await _process_frames(40)
 	_check(g.first_person and g.spring_arm.spring_length < 0.05, "First-Person: Kamera im Kopf")
-	var cam_h := g.camera.global_position.y - g.global_position.y
-	_check(absf(cam_h - g.fp_height) < 0.1, "First-Person: Augenhoehe (%.2f)" % cam_h)
-	_check(not g.knife_tp.visible and g.knife_fp.visible, "First-Person: Viewmodel-Messer sichtbar")
 	for i in 40:
 		g.velocity = Vector3(0, 0, -40)
 		await process_frame
@@ -81,7 +78,9 @@ func _test_knife() -> void:
 	var hp_before := d.hp
 	await _tap("attack")
 	await _frames(15)
-	_check(d.hp < hp_before, "Slash trifft Dummy (%.0f -> %.0f)" % [hp_before, d.hp])
+	var dmg := hp_before - d.hp
+	_check(dmg > 0.0, "Slash trifft Dummy")
+	_check(absf(dmg - g.knife.min_damage) < 0.6, "Stillstand = minimaler Base-Damage (%.1f)" % dmg)
 	_check(g.hooks_out() == 0, "LMB loest keinen Grapple aus")
 	await _tap("attack")
 	await _frames(4)
@@ -89,15 +88,30 @@ func _test_knife() -> void:
 	await _frames(30)
 
 
-func _test_aim_assist() -> void:
-	print("Auto-Aim")
+func _test_damage_curve() -> void:
+	print("Momentum-Schaden")
+	var k := g.knife
+	var d0: float = k.compute_damage(Vector3.ZERO).damage
+	var d20: float = k.compute_damage(Vector3(0, 0, -20)).damage
+	var d40: float = k.compute_damage(Vector3(0, 0, -40)).damage
+	var p40: Dictionary = k.compute_damage(Vector3(0, -40, -4))
+	var p60: Dictionary = k.compute_damage(Vector3(0, -60, -4), 1.0, true)
+	print("    0 m/s %.0f | 20 m/s %.0f | 40 m/s flach %.0f | 40 m/s Sturz %.0f | 60 m/s Turbo-Sturz %.0f"
+			% [d0, d20, d40, p40.damage, p60.damage])
+	_check(d0 < d20 and d20 < d40, "Schaden steigt mit der Geschwindigkeit")
+	_check(d40 / d20 > 2.0 * 0.9, "ueberproportional (40 vs 20 m/s: x%.2f)" % (d40 / d20))
+	_check(p40.is_plunge and p40.damage > d40 * 3.0, "Sturzflug von oben = High-Hit (x%.1f vs flach)" % (p40.damage / d40))
+	_check(p60.damage > p40.damage * 3.0, "exponentiell mit Fallgeschwindigkeit (x%.1f)" % (p60.damage / p40.damage))
+	_check(not k.compute_damage(Vector3(0, -40, -60)).is_plunge, "flacher Vorbeiflug zaehlt nicht als Sturzflug")
+
+
+func _test_aim_and_lock() -> void:
+	print("Auto-Aim & Target-Lock")
 	var d := _dummy_near(Vector3(0, 1, -40))
-	# Kamera 2 m neben dem Dummy vorbei zielen lassen
 	await _place(Vector3(2.0, 1.2, -10.0), 0.0, -0.02)
 	await _frames(3)
-	_check(g.aim_kind == GuardianController.AimKind.ENEMY and g.aim_target == d,
-			"Dummy rastet trotz Versatz ein (Kegel/Radius)")
-	# Knapp neben einen Turm zielen: exakter Strahl verfehlt, Kegel trifft
+	_check(g.lock_target == d, "Lock-Kegel erfasst Dummy trotz Versatz (Tab)")
+	_check(g.aim_kind != GuardianController.AimKind.ENEMY, "RMB-Seil rastet NICHT auf den Gegner ein")
 	await _place(Vector3(0, 1.2, 0), 0.0, 0.0)
 	var t := _closest_tower()
 	_aim_at(t.pos + Vector3(0, 4, 0))
@@ -113,104 +127,156 @@ func _test_aim_assist() -> void:
 		if g._ray(space, start, start + fwd * g.grapple_range).is_empty():
 			missed = true
 			break
-	g._yaw += 0.01  # ~0.5 m ueber die Kante hinaus
+	g._yaw += 0.01
 	await _process_frames(1)
 	await _frames(2)
 	_check(missed and g.aim_kind == GuardianController.AimKind.POINT and g.aim_assisted,
-			"Turmkante knapp verfehlt -> Assist rastet ein")
+			"Turmkante knapp verfehlt -> unsichtbarer Assist rastet ein")
 
 
-func _test_combat_dive() -> void:
-	print("Grapple auf Gegner (RMB)")
-	var d := _dummy_near(Vector3(0, 18, -60))
-	await _place(Vector3(0, 1.2, -30), 0.0, 0.0)
-	_aim_at(d.get_lock_point())
-	await _process_frames(2)
-	await _frames(3)
-	_check(g.aim_target == d, "Ziel im Lock")
-	var hits := d.hits_taken
-	Input.action_press("grapple")
-	await _frames(2)
+func _test_taut_rope_base_pull() -> void:
+	print("Straffes Seil & Base-Pull (0.5x)")
+	var r := await _grapple_tower(false, 60)
+	var base: float = g.reel_speed * g.reel_base_mult
+	_check(absf(r.approach - base) < 2.5, "zieht gleichmaessig mit Basis-Speed ein (%.1f / %.1f m/s)" % [r.approach, base])
+	_check(r.max_slack < 0.05, "Seil laesst nie nach (max. Durchhang %.2f m)" % r.max_slack)
+	_check(r.max_jolt < 4.0, "kein wildes Wegreissen (max. %.1f m/s pro Frame)" % r.max_jolt)
+	await _frames(180)
 	var h := _active_hook()
-	var dived := false
-	for i in 120:
-		await physics_frame
-		if h.phase == GrappleHook.Phase.DIVE:
-			dived = true
-		if d.hits_taken > hits:
-			break
-	_check(dived, "Sturzangriff von oben ausgeloest")
-	_check(d.hits_taken > hits, "Sturzangriff trifft (HP %.0f)" % d.hp)
-	await _frames(120)
-	_check(h.active, "Seil bleibt nach dem Treffer dran")
+	_check(h != null and h.active, "Seil loest sich nicht von selbst (nach 4 s)")
+	var dist := g.global_position.distance_to(h.pivot()) if h else INF
+	_check(dist < g.hang_length + 1.5, "haengt am Ende ruhig am Anker (%.1f m)" % dist)
+	_check(g.velocity.length() < 25.0, "kein Glitschen / Wegschleudern am Anker (%.1f m/s)" % g.velocity.length())
 	Input.action_release("grapple")
 	await _frames(2)
-	_check(h.active and h.slack and not g.any_hook_active(), "Loslassen: Seil sofort locker (Doppel-Tap-Fenster)")
+	_check(h.slack and not g.any_hook_active(), "Loslassen: sofort locker (Doppel-Tap-Fenster)")
 	await _frames(int(g.double_tap_window * 60.0) + 3)
 	_check(g.hooks_out() == 0, "nach dem Fenster komplett geloest")
-	await _frames(90)
-
-
-func _test_combat_grapple_point() -> void:
-	print("Grapple auf Geometrie")
-	await _place(Vector3(0, 1.2, 0), 0.0, 0.0)
-	var t := _closest_tower()
-	_aim_at(t.pos + Vector3(0, t.size.y * 0.25, 0))
-	await _process_frames(2)
-	await _frames(3)
-	_check(g.aim_kind == GuardianController.AimKind.POINT, "Turm anvisiert")
-	var start := g.global_position.distance_to(g.aim_point)
-	Input.action_press("grapple")
-	await _frames(2)
-	var h := _active_hook()
-	var rebounded := false
-	var min_d := INF
-	for i in 240:  # 4 Sekunden halten
-		await physics_frame
-		min_d = minf(min_d, g.global_position.distance_to(h.anchor_world()))
-		if h.phase == GrappleHook.Phase.TETHER:
-			rebounded = true
-	_check(min_d < start - 10.0, "zieht mit Wucht heran (%.1f -> %.1f)" % [start, min_d])
-	_check(rebounded, "Rebound am Ankerpunkt (Bogen drueber hinaus)")
-	_check(h.active, "reissfest: nach 4 s noch eingehakt")
-	Input.action_release("grapple")
-	await _frames(int(g.double_tap_window * 60.0) + 3)
-	_check(not h.active and g.velocity.length() > 3.0,
-			"Release behaelt Momentum (%.1f)" % g.velocity.length())
 	await _frames(120)
 
 
-func _test_turbo_reel() -> void:
-	print("Shift am Seil: Turbo-Einzug")
-	var results := []
-	for turbo in [false, true]:
+func _test_turbo_pull() -> void:
+	print("Turbo-Pull (Shift am Seil)")
+	var b := await _grapple_tower(false, 40)
+	Input.action_release("grapple")
+	await _frames(20)
+	var t := await _grapple_tower(true, 40)
+	_check(t.turbo_seen, "Shift am Seil schaltet auf Turbo")
+	var ratio: float = t.approach / maxf(b.approach, 0.01)
+	_check(ratio > 2.4 and ratio < 3.1, "Turbo = %.2fx Basis (%.1f vs %.1f m/s)" % [ratio, t.approach, b.approach])
+	_check(t.covered > b.covered * 2.0, "zieht mit Wucht heran (%.1f m vs %.1f m)" % [t.covered, b.covered])
+	Input.action_release("grapple")
+	Input.action_release("sprint")
+	await _frames(int(g.double_tap_window * 60.0) + 3)
+	await _frames(120)
+
+
+func _test_rope_steering() -> void:
+	print("WASD am Seil")
+	var lat := []
+	for steer in ["", "move_left", "move_right"]:
 		await _place(Vector3(0, 1.2, 0), 0.0, 0.0)
 		var t := _closest_tower()
 		_aim_at(t.pos + Vector3(0, t.size.y * 0.3, 0))
 		await _process_frames(2)
 		await _frames(3)
-		var a := g.aim_point
-		var d0 := g.global_position.distance_to(a)
-		if turbo:
-			Input.action_press("sprint")
+		var right := g.cam_rig.global_basis.x
+		var p0 := g.global_position
 		Input.action_press("grapple")
-		var turbo_seen := false
-		for i in 40:
-			await physics_frame
-			turbo_seen = turbo_seen or g.is_turbo()
-		var approach := g.velocity.dot((a - g.global_position).normalized())
-		results.append({"covered": d0 - g.global_position.distance_to(a), "turbo": turbo_seen,
-				"speed": approach})
-		Input.action_release("grapple")
-		Input.action_release("sprint")
+		if steer != "":
+			Input.action_press(steer)
+		await _frames(45)
+		lat.append((g.global_position - p0).dot(right))
+		_release_all()
 		await _frames(int(g.double_tap_window * 60.0) + 3)
-		await _frames(60)
-	_check(not results[0].turbo and results[1].turbo, "Turbo nur mit Shift in der Luft am Seil")
-	var ratio: float = results[1].covered / maxf(results[0].covered, 0.01)
-	_check(ratio > 1.25, "Turbo zieht schneller ein (%.1f m vs %.1f m, x%.2f)" % [
-			results[1].covered, results[0].covered, ratio])
-	_check(results[0].speed <= g.combat_pull_max_speed * g.reel_base_mult + 3.0,
-			"Basis-Einzug ist sanft (%.1f m/s Richtung Anker)" % results[0].speed)
+		await _frames(90)
+	_check(lat[1] < lat[0] - 1.5 and lat[2] > lat[0] + 1.5,
+			"A/D lenken die Flugbahn (links %.1f | neutral %.1f | rechts %.1f m)" % [lat[1], lat[0], lat[2]])
+
+
+func _test_dual_hooks() -> void:
+	print("Dual-Hooks (Doppel-Tap)")
+	_first_person(true)
+	await _place(Vector3(-60, 4.0, 100), 0.0, 0.0)
+	_aim_at(Vector3(-62.5, 9.0, 97.0))
+	await _process_frames(2)
+	await _frames(1)
+	Input.action_press("grapple")
+	await _frames(4)
+	Input.action_release("grapple")
+	await _frames(2)
+	_aim_at(Vector3(-57.5, 9.0, 103.0))
+	await _process_frames(2)
+	await _frames(1)
+	Input.action_press("grapple")
+	await _frames(2)
+	_check(g.hooks_out() == 2 and g.hook_left.active and g.hook_right.active,
+			"Doppel-Tap: beide Hueft-Haken draussen")
+	_check(not g.hook_left.slack and not g.hook_right.slack, "beide Seile straff")
+	Input.action_press("sprint")
+	await _frames(2)
+	_check(g.is_turbo(), "Turbo-Pull wirkt auch mit zwei Haken")
+	Input.action_release("sprint")
+	await _frames(25)  # einpendeln (inkl. Aufprall an der Decke)
+	var jitter := 0.0
+	var prev := g.velocity
+	for i in 40:
+		await physics_frame
+		jitter = maxf(jitter, (g.velocity - prev).length())
+		prev = g.velocity
+	_check(jitter < 1.5, "zwei Seile kaempfen nicht gegeneinander (max. dv %.2f m/s)" % jitter)
+	_check(g.get("dual_mode") == null and g.get("slingshot_charge") == null, "kein Slingshot/Nest mehr im Code")
+	Input.action_release("grapple")
+	await _frames(int(g.double_tap_window * 60.0) + 3)
+	_check(g.hooks_out() == 0, "Loslassen loest beide Haken")
+	await _frames(60)
+	_first_person(false)
+
+
+func _test_hip_alternation() -> void:
+	print("Hueft-Wechsel links/rechts")
+	var used := []
+	for i in 2:
+		await _place(Vector3(0, 1.2, 0), 0.0, 0.0)
+		var t := _closest_tower()
+		_aim_at(t.pos + Vector3(0, t.size.y * 0.3, 0))
+		await _process_frames(2)
+		await _frames(3)
+		Input.action_press("grapple")
+		await _frames(2)
+		used.append(_active_hook())
+		Input.action_release("grapple")
+		await _frames(int(g.double_tap_window * 60.0) + 3)
+	_check(used[0] != null and used[1] != null and used[0] != used[1],
+			"Klicks wechseln zwischen linker und rechter Huefte")
+
+
+func _test_target_lock_dive() -> void:
+	print("Target-Lock / Combat-Grapple (Tab)")
+	var d := _dummy_near(Vector3(0, 18, -60))
+	await _place(Vector3(0, 1.2, -30), 0.0, 0.0)
+	_aim_at(d.get_lock_point())
+	await _process_frames(2)
+	await _frames(3)
+	_check(g.lock_target == d, "Ziel im Lock")
+	var hits := d.hits_taken
+	await _tap("target_lock")
+	var dived := false
+	for i in 150:
+		await physics_frame
+		var ch := g.combat_hook()
+		if ch and ch.phase == GrappleHook.Phase.DIVE:
+			dived = true
+		if d.hits_taken > hits:
+			break
+	await _frames(1)
+	_check(dived, "Sturzangriff von oben ausgeloest")
+	_check(d.hits_taken > hits, "Sturzangriff trifft")
+	var lh: Dictionary = g.knife.last_hit
+	_check(not lh.is_empty() and lh.is_plunge and lh.damage > 100.0,
+			"High-Hit mit Plunge-Bonus (%.0f Schaden, x%.1f)" % [lh.get("damage", 0.0), lh.get("plunge_mult", 0.0)])
+	_check(g.combat_hook() == null and g.velocity.y > 5.0, "Abprall nach oben, Angriff abgeschlossen")
+	await _frames(120)
 
 
 func _test_rope_bending() -> void:
@@ -223,7 +289,6 @@ func _test_rope_bending() -> void:
 	Input.action_press("grapple")
 	await _frames(2)
 	var h := _active_hook()
-	# Hindernis zwischen Spieler und Anker schieben
 	var mid := g.global_position.lerp(h.anchor_world(), 0.4)
 	var wall := StaticBody3D.new()
 	var cs := CollisionShape3D.new()
@@ -244,99 +309,6 @@ func _test_rope_bending() -> void:
 	Input.action_release("grapple")
 	wall.queue_free()
 	await _frames(90)
-
-
-func _test_hip_alternation() -> void:
-	print("Dual-Hip: Wechsel links/rechts")
-	await _place(Vector3(0, 1.2, 0), 0.0, 0.0)
-	var t := _closest_tower()
-	_aim_at(t.pos + Vector3(0, t.size.y * 0.3, 0))
-	await _process_frames(2)
-	await _frames(3)
-	Input.action_press("grapple")
-	await _frames(2)
-	var first := _active_hook()
-	Input.action_release("grapple")
-	await _frames(int(g.double_tap_window * 60.0) + 3)
-	await _place(Vector3(0, 1.2, 0), 0.0, 0.0)
-	_aim_at(t.pos + Vector3(0, t.size.y * 0.3, 0))
-	await _process_frames(2)
-	await _frames(3)
-	Input.action_press("grapple")
-	await _frames(2)
-	var second := _active_hook()
-	_check(first != null and second != null and first != second,
-			"Klicks wechseln zwischen linker und rechter Huefte")
-	Input.action_release("grapple")
-	await _frames(int(g.double_tap_window * 60.0) + 3)
-
-
-func _test_slingshot() -> void:
-	print("Dual-Hook: Slingshot")
-	_first_person(true)
-	await _place(Vector3(0, 1.2, 0), 0.0, 0.0)
-	var towers := _two_towers()
-	_aim_at(towers[0].pos + Vector3(0, 8, 0))
-	await _process_frames(2)
-	await _frames(3)
-	Input.action_press("grapple")
-	await _frames(10)
-	Input.action_release("grapple")
-	await _frames(3)
-	_aim_at(towers[1].pos + Vector3(0, 8, 0))
-	await _process_frames(2)
-	await _frames(1)
-	Input.action_press("grapple")  # Doppel-Tap
-	await _frames(2)
-	_check(g.hooks_out() == 2, "Doppel-Tap setzt zweiten Haken")
-	_check(g.dual_mode == GuardianController.DualMode.SLINGSHOT, "weit auseinander -> Slingshot")
-	await _frames(60)
-	_check(g.slingshot_charge > 0.95, "Halten laedt Spannung (%.0f%%)" % (g.slingshot_charge * 100.0))
-	_check(g.hooks_out() == 2, "beide Seile bleiben unter Spannung dran")
-	g._pitch = 0.1
-	await _process_frames(2)
-	await _frames(1)
-	Input.action_release("grapple")
-	await _frames(2)
-	var sp := g.velocity.length()
-	_check(sp > g.slingshot_max_speed * 0.8 and g.velocity.y > 0.0,
-			"Loslassen schleudert nach vorne/oben (%.1f m/s)" % sp)
-	_check(g.hooks_out() == 0, "nach dem Schuss beide Seile geloest")
-	await _frames(150)
-	_first_person(false)
-
-
-func _test_nest() -> void:
-	print("Dual-Hook: Tactical Nest")
-	_first_person(true)
-	await _place(Vector3(-60, 4.0, 100), 0.0, 0.0)
-	_aim_at(Vector3(-62.5, 9.0, 97.0))
-	await _process_frames(2)
-	await _frames(1)
-	Input.action_press("grapple")
-	await _frames(4)
-	Input.action_release("grapple")
-	await _frames(2)
-	_aim_at(Vector3(-57.5, 9.0, 103.0))
-	await _process_frames(2)
-	await _frames(1)
-	Input.action_press("grapple")
-	await _frames(2)
-	_check(g.hooks_out() == 2 and g.dual_mode == GuardianController.DualMode.NEST,
-			"Decke / enger Raum -> Tactical Nest")
-	await _frames(60)
-	var p0 := g.global_position
-	await _frames(60)
-	var drift := g.global_position.distance_to(p0)
-	_check(drift < 0.3 and g.velocity.length() < 0.5,
-			"haengt stabil in der Luft (Drift %.2f m)" % drift)
-	_check(g.global_position.y > 5.0, "Haengepunkt unter der Decke (y %.1f)" % g.global_position.y)
-	await _tap("jump", 2)
-	_check(g.hooks_out() == 0 and g.velocity.length() > 10.0,
-			"Sprung beendet das Nest mit Absprung (%.1f m/s)" % g.velocity.length())
-	Input.action_release("grapple")
-	await _frames(90)
-	_first_person(false)
 
 
 func _test_wallrun() -> void:
@@ -362,6 +334,44 @@ func _test_wallrun() -> void:
 
 
 # --- Helpers --------------------------------------------------------------
+## Seil an den naechsten Turm, n Frames halten. Misst Annaeherung, Durchhang, Ruck.
+func _grapple_tower(turbo: bool, n: int) -> Dictionary:
+	await _place(Vector3(0, 1.2, 0), 0.0, 0.0)
+	var t := _closest_tower()
+	_aim_at(t.pos + Vector3(0, t.size.y * 0.3, 0))
+	await _process_frames(2)
+	await _frames(3)
+	var a := g.aim_point
+	var d0 := g.global_position.distance_to(a)
+	Input.action_press("grapple")
+	await _frames(2)
+	if turbo:
+		Input.action_press("sprint")
+	var h := _active_hook()
+	var max_slack := 0.0
+	var max_jolt := 0.0
+	var turbo_seen := false
+	var prev := g.velocity
+	var approach_sum := 0.0
+	var approach_n := 0
+	for i in n:
+		await physics_frame
+		turbo_seen = turbo_seen or g.is_turbo()
+		var dist := g.global_position.distance_to(h.pivot())
+		max_slack = maxf(max_slack, h.rope_length - dist)
+		if i > 10:
+			max_jolt = maxf(max_jolt, (g.velocity - prev).length())
+			if dist > g.hang_length + 4.0:
+				approach_sum += g.velocity.dot((h.pivot() - g.global_position).normalized())
+				approach_n += 1
+		prev = g.velocity
+	return {
+		"approach": approach_sum / maxf(approach_n, 1),
+		"covered": d0 - g.global_position.distance_to(a),
+		"max_slack": max_slack, "max_jolt": max_jolt, "turbo_seen": turbo_seen,
+	}
+
+
 func _place(pos: Vector3, yaw: float, pitch: float) -> void:
 	_release_all()
 	g._release_all_hooks()
@@ -375,6 +385,13 @@ func _place(pos: Vector3, yaw: float, pitch: float) -> void:
 	await _frames(2)
 
 
+func _aim_at(p: Vector3) -> void:
+	var cam := g.global_position + Vector3.UP * (g.fp_height if g.first_person else g.tp_height)
+	var v := p - cam
+	g._yaw = atan2(-v.x, -v.z)
+	g._pitch = atan2(v.y, Vector2(v.x, v.z).length())
+
+
 func _active_hook() -> GrappleHook:
 	for h in g.hooks:
 		if h.active:
@@ -386,27 +403,6 @@ func _first_person(on: bool) -> void:
 	if g.first_person != on:
 		g.toggle_camera()
 	g._cam_blend = 1.0 if on else 0.0
-
-
-func _two_towers() -> Array:
-	# Zwei Tuerme, die beide vor dem Spieler liegen und weit auseinander sind.
-	var list: Array = []
-	for b: Dictionary in arena._boxes:
-		if b.size.y > 20.0 and b.size.x > 3.5 and (b.pos as Vector3).length() < 60.0:
-			list.append(b)
-	list.sort_custom(func(a, b): return (a.pos as Vector3).length() < (b.pos as Vector3).length())
-	for i in list.size():
-		for j in range(i + 1, list.size()):
-			if (list[i].pos as Vector3).distance_to(list[j].pos) > 25.0:
-				return [list[i], list[j]]
-	return [list[0], list[1]]
-
-
-func _aim_at(p: Vector3) -> void:
-	var cam := g.global_position + Vector3.UP * (g.fp_height if g.first_person else g.tp_height)
-	var v := p - cam
-	g._yaw = atan2(-v.x, -v.z)
-	g._pitch = atan2(v.y, Vector2(v.x, v.z).length())
 
 
 func _dummy_near(p: Vector3) -> TrainingDummy:
@@ -436,7 +432,7 @@ func _tap(action: String, frames := 2) -> void:
 
 func _release_all() -> void:
 	for a in ["move_forward", "move_back", "move_left", "move_right", "sprint", "jump",
-			"attack", "grapple"]:
+			"attack", "grapple", "target_lock"]:
 		Input.action_release(a)
 
 

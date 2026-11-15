@@ -18,6 +18,9 @@ const MAX_BENDS := 8
 
 var kind: Kind
 var active := false
+## true = Combat-Grapple (Tab): Anflug ueber das Ziel + Sturzangriff.
+## false = normales Seil (RMB): straffes Seil mit Winde.
+var combat := false
 var phase: Phase = Phase.TETHER
 var target: Node3D = null
 var target_offset := Vector3.ZERO
@@ -40,9 +43,11 @@ func _init(hook_kind: Kind) -> void:
 	kind = hook_kind
 
 
-func attach(point: Vector3, surface_normal: Vector3, hit_target: Node3D, player_pos: Vector3) -> void:
+func attach(point: Vector3, surface_normal: Vector3, hit_target: Node3D, player_pos: Vector3,
+		is_combat := false) -> void:
 	active = true
 	slack = false
+	combat = is_combat
 	normal = surface_normal
 	target = hit_target
 	anchor = point
@@ -52,7 +57,7 @@ func attach(point: Vector3, surface_normal: Vector3, hit_target: Node3D, player_
 	_bend_planes.clear()
 	rope_length = player_pos.distance_to(point)
 	attach_height = player_pos.y
-	phase = Phase.PULL
+	phase = Phase.PULL if is_combat else Phase.TETHER
 	phase_time = 0.0
 	closest = INF
 
@@ -60,6 +65,7 @@ func attach(point: Vector3, surface_normal: Vector3, hit_target: Node3D, player_
 func release() -> void:
 	active = false
 	slack = false
+	combat = false
 	target = null
 	bends.clear()
 	_bend_lengths.clear()

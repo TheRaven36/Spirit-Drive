@@ -3,24 +3,46 @@ extends Node
 ## Jagdmesser – Grundstruktur fuer den Nahkampf (LMB / Xbox X).
 ##
 ## 3er-Combo mit Windup -> Active -> Recovery. Treffer per Kugel-Abfrage vor
-## der Blickrichtung. Schaden skaliert mit dem Tempo (Flyby-Slashes) und
-## blockiert das Movement nicht – der Flow bleibt erhalten.
+## der Blickrichtung. Blockiert das Movement nicht – der Flow bleibt erhalten.
 ## Ziele brauchen eine Methode `take_hit(damage: float, dir: Vector3, source: Node)`.
+##
+## MOMENTUM-SCHADEN (compute_damage):
+##   Schaden = min_damage * Combo * Speed-Faktor * Sturzflug-Faktor
+##   - Speed-Faktor = 1 + speed_scale * (Speed / speed_ref) ^ speed_exponent
+##     Stillstand = 1x (minimaler Base-Damage), Vorbeiflug steigt ueberproportional.
+##   - Sturzflug-Faktor (High-Hit): nur bei steilem Fall von oben
+##     (Abwaertsspeed >= plunge_min_down_speed, Steilheit >= plunge_min_verticality).
+##     Exponentiell: verdoppelt sich je plunge_step m/s zusaetzlicher Fallgeschwindigkeit,
+##     mal Steilheit, mal turbo_bonus im Turbo-Pull.
+##   Das Info-Dictionary (speed_mult, plunge_mult, is_plunge, ...) ist die Basis fuer
+##   spaetere Schwachstellen-/Ruestungs-Mechaniken.
 
 signal slash_started(combo_index: int)
-signal hit_landed(target: Node, damage: float)
+signal hit_landed(target: Node, damage: float, info: Dictionary)
 
 enum Phase { IDLE, WINDUP, ACTIVE, RECOVERY }
 
-@export var base_damage := 10.0
+@export_group("Damage")
+## Schaden im Stillstand.
+@export var min_damage := 5.0
 @export var combo_multipliers := PackedFloat32Array([1.0, 1.15, 1.6])
-## +x Schaden pro m/s Geschwindigkeit (0.03 = +3 % pro m/s).
-@export var speed_damage_bonus := 0.03
-@export var dive_damage_mult := 3.0
+## Bei speed_ref m/s gibt es +speed_scale (1.0 = +100 %), darueber ueberproportional.
+@export var speed_ref := 20.0
+@export var speed_scale := 1.0
+@export var speed_exponent := 1.5
+@export_subgroup("Plunge (Sturzflug von oben)")
+@export var plunge_min_down_speed := 15.0
+@export var plunge_min_verticality := 0.6
+## Basis der Exponentialkurve: x2 je plunge_step m/s zusaetzlicher Fallgeschwindigkeit.
+@export var plunge_base := 2.0
+@export var plunge_step := 10.0
+@export var turbo_bonus := 1.25
+@export_group("Timing")
 @export var slash_windup := 0.04
 @export var slash_active := 0.12
 @export var slash_recovery := 0.12
 @export var combo_window := 0.35
+@export_group("Hitbox")
 @export var hit_radius := 1.4
 @export var hit_reach := 1.7
 @export_flags_3d_physics var hit_mask := 1
@@ -29,6 +51,8 @@ var phase: Phase = Phase.IDLE
 var combo_index := -1
 ## 0..1 waehrend eines Slashes, -1 im Leerlauf (fuer die Messer-Animation).
 var swing_progress := -1.0
+## Letzter Treffer (fuer HUD/Debug): {damage, speed, speed_mult, plunge_mult, is_plunge}
+var last_hit: Dictionary = {}
 
 var _guardian: GuardianController
 var _t := 0.0
@@ -115,15 +139,36 @@ func _sweep_hits() -> void:
 		_deal(col as Node, mult, dir)
 
 
-## Direkter Treffer, z. B. am Ende eines Sturzangriffs.
-func strike(target: Node, mult: float) -> void:
+## Direkter Treffer, z. B. am Ende eines Sturzangriffs (Combo-Faktor 1).
+func strike(target: Node) -> void:
 	if target == null or not target.has_method("take_hit"):
 		return
-	_deal(target, mult * dive_damage_mult, _guardian.velocity.normalized())
+	_deal(target, 1.0, _guardian.velocity.normalized())
+
+
+## Momentum-Schaden aus Geschwindigkeit (siehe Kopfkommentar).
+func compute_damage(vel: Vector3, combo_mult := 1.0, turbo := false) -> Dictionary:
+	var speed := vel.length()
+	var speed_mult := 1.0 + speed_scale * pow(speed / maxf(speed_ref, 0.01), speed_exponent)
+	var down := maxf(-vel.y, 0.0)
+	var verticality := down / maxf(speed, 0.001)
+	var plunge_mult := 1.0
+	var is_plunge := down >= plunge_min_down_speed and verticality >= plunge_min_verticality
+	if is_plunge:
+		plunge_mult = pow(plunge_base, 1.0 + (down - plunge_min_down_speed) / plunge_step) * verticality
+		if turbo:
+			plunge_mult *= turbo_bonus
+	return {
+		"damage": min_damage * combo_mult * speed_mult * plunge_mult,
+		"speed": speed,
+		"speed_mult": speed_mult,
+		"plunge_mult": plunge_mult,
+		"is_plunge": is_plunge,
+	}
 
 
 func _deal(target: Node, mult: float, dir: Vector3) -> void:
-	var speed := _guardian.velocity.length() if _guardian else 0.0
-	var dmg := base_damage * mult * (1.0 + speed * speed_damage_bonus)
-	target.take_hit(dmg, dir, _guardian)
-	hit_landed.emit(target, dmg)
+	var info := compute_damage(_guardian.velocity, mult, _guardian.is_turbo())
+	last_hit = info
+	target.take_hit(info.damage, dir, _guardian)
+	hit_landed.emit(target, info.damage, info)

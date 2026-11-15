@@ -3,15 +3,16 @@ extends CharacterBody3D
 ## Guardian – High-Speed-Controller.
 ##
 ## Movement: Laufen / Sprint / Air-Control / Wall-Run.
-## Shift:    kontextsensitiv – am Boden Sprint, am Seil in der Luft Turbo-Einzug.
+## Shift:    kontextsensitiv – am Boden Sprint, am Seil Turbo-Pull.
 ## Seile:    Dual-Hip-Grapple auf RMB / LT (zwei Werfer an linker + rechter Huefte).
-##           - Klick/Halten: feuert den naechsten Huefthaken (abwechselnd L/R).
-##             Auf Gegner: Sturzangriff von oben.
-##           - Doppel-Tap: zweiter Haken an zweiter Oberflaeche -> Seil-Spannung:
-##             Slingshot (Halten laedt, Loslassen/Sprung schleudert) oder
-##             Tactical Nest (enge Raeume/Decke: stabiler Haengepunkt).
-##           Seile wickeln sich um Geometrie (Bending), loesen sich nie von
-##           selbst und schiessen am Ankerpunkt im Bogen drueber (Rebound).
+##           - Klick/Halten: Haken der naechsten freien Huefte (abwechselnd L/R).
+##             Das Seil ist straff und zieht per Winde gleichmaessig ein
+##             (Basis 0.5x). Shift = Turbo-Pull (2.75x der Basis).
+##           - Doppel-Tap: zweiter Haken an zweiter Oberflaeche, zwei straffe Seile.
+##           - WASD am Seil: tangential am Pendel steuern.
+##           Seile wickeln sich um Geometrie (Bending) und loesen sich nie von
+##           selbst. Physikalisch ehrlich: kein Auto-Schleudern, kein Fixieren.
+## Lock:     Tab / R3 = Target-Lock + Combat-Grapple (Anflug + Sturzangriff).
 ## Kampf:    LMB = Jagdmesser (siehe KnifeCombat).
 ## Kamera:   P = Third-/First-Person, nahtlos ueberblendet.
 ##
@@ -23,7 +24,6 @@ signal camera_mode_changed(first_person: bool)
 
 enum State { NORMAL, HOOKED, WALLRUN }
 enum AimKind { NONE, POINT, ENEMY }
-enum DualMode { NONE, SLINGSHOT, NEST }
 
 # --- Ground ---------------------------------------------------------------
 @export_group("Ground")
@@ -31,7 +31,7 @@ enum DualMode { NONE, SLINGSHOT, NEST }
 @export var sprint_speed := 24.0
 @export var ground_accel := 110.0
 @export var ground_friction := 10.0
-## Wie schnell Ueber-Speed (aus Seil/Slingshot) am Boden abgebaut wird.
+## Wie schnell Ueber-Speed (aus Seil/Sturzflug) am Boden abgebaut wird.
 @export var overspeed_decay := 18.0
 
 # --- Air ------------------------------------------------------------------
@@ -46,57 +46,43 @@ enum DualMode { NONE, SLINGSHOT, NEST }
 @export var air_drag := 0.04
 @export var terminal_speed := 75.0
 
-# --- Seile allgemein ------------------------------------------------------
+# --- Seil (RMB / LT) ------------------------------------------------------
 @export_group("Rope")
 @export_flags_3d_physics var grapple_mask := 1
-@export var rope_min_length := 1.5
-@export var rope_stiffness := 8.0
-@export var hook_steer_accel := 18.0
-## Am Ankerpunkt: Abstand, ab dem der Rebound (Bogen drueber hinaus) ausloest.
-@export var rebound_radius := 3.5
-@export var rebound_up := 9.0
-@export var rebound_rope_length := 7.0
-
-# --- Grapple (RMB) --------------------------------------------------------
-@export_group("Grapple")
 @export var grapple_range := 70.0
+## Referenz-Einzugsgeschwindigkeit der Winde (m/s) ...
+@export var reel_speed := 24.0
+## ... automatischer Basis-Einzug = 50 % davon: gleichmaessig und kontrolliert.
+@export var reel_base_mult := 0.5
+## Shift am Seil: Turbo-Pull = Faktor auf den Basis-Einzug (2.5 - 3x).
+@export var reel_turbo_mult := 2.75
+## Wie hart das straffe Seil auf die Einzugsgeschwindigkeit nachregelt.
+@export var rope_response := 40.0
+## Ab dieser Restlaenge stoppt die Winde – man haengt am Anker.
+@export var hang_length := 2.5
+@export var rope_min_length := 1.5
+## WASD am Seil: tangentiale Steuerung von Flugbahn/Pendel.
+@export var rope_steer_accel := 24.0
+## Nach dem Loslassen haengt das Seil so lange locker (keine Kraft) – Fenster fuer den Doppel-Tap.
+@export var double_tap_window := 0.2
+## Mindestabstand der beiden Anker beim Doppel-Tap (zweite Oberflaeche).
+@export var dual_min_separation := 2.5
+
+# --- Target-Lock / Combat-Grapple (Tab / R3) -------------------------------
+@export_group("Combat Grapple")
 @export var combat_pull_accel := 140.0
 @export var combat_pull_impulse := 12.0
 @export var combat_pull_max_speed := 48.0
-@export var combat_reel_accel := 45.0
-## Basis-Einzug ist bewusst sanft (Anteil der Werte oben) ...
-@export var reel_base_mult := 0.5
-## ... Shift in der Luft am Seil = Turbo-Einzug (Faktor auf die Basis).
-@export var reel_turbo_mult := 1.5
-## Zielfuehrung im Einzug: daempft seitliche Geschwindigkeit -> kein Umkreisen.
+## Zielfuehrung im Anflug: daempft seitliches Driften -> kein Umkreisen.
 @export var pull_homing := 3.0
-## Faellt der Abstand zum Ziel unter diesen Wert und steigt dann wieder,
-## gilt das Ziel als erreicht (Rebound bzw. Sturzangriff loest aus).
+## Sturzangriff loest aus, wenn man naeher als dive_trigger_radius am Anflugpunkt ist
+## oder ihn innerhalb von pull_arrive_window passiert hat.
+@export var dive_trigger_radius := 3.5
 @export var pull_arrive_window := 10.0
 @export var dive_height := 4.0
 @export var dive_speed := 42.0
 @export var dive_hit_radius := 2.4
 @export var dive_bounce := 13.0
-
-# --- Dual-Hook (Doppel-Tap) -----------------------------------------------
-@export_group("Dual Hook")
-## Zeitfenster nach dem Loslassen fuer den zweiten Klick (Seil haengt solange locker).
-@export var double_tap_window := 0.2
-## Mindestabstand der beiden Anker (zweite Oberflaeche).
-@export var dual_min_separation := 2.5
-@export var slingshot_reel_speed := 9.0
-@export var slingshot_charge_time := 0.8
-@export var slingshot_min_speed := 26.0
-@export var slingshot_max_speed := 62.0
-## Mindest-Aufwaertsanteil der Abschussrichtung ("nach vorne/oben").
-@export var slingshot_min_up := 0.25
-@export var reel_speed := 10.0
-## Tactical Nest: greift, wenn beide Anker nah sind oder beide an der Decke haengen.
-@export var nest_radius := 9.0
-@export var nest_hang_offset := 1.6
-@export var nest_stiffness := 7.0
-@export var nest_jump_speed := 20.0
-@export var nest_jump_up := 8.0
 
 # --- Auto-Aim -------------------------------------------------------------
 @export_group("Aim Assist")
@@ -156,11 +142,9 @@ var hook_left := GrappleHook.new(GrappleHook.Kind.HIP_LEFT)
 var hook_right := GrappleHook.new(GrappleHook.Kind.HIP_RIGHT)
 var hooks: Array[GrappleHook] = [hook_left, hook_right]
 
-## Dual-Hook-Zustand (fuer HUD/Tests).
-var dual_mode: DualMode = DualMode.NONE
-## 0..1 Ladung des Slingshots.
-var slingshot_charge := 0.0
 var aim_normal := Vector3.ZERO
+## Gegner im Lock-Kegel (Tab / R3) – unabhaengig vom Seil-Ziel.
+var lock_target: Node3D = null
 
 var _yaw := 0.0
 var _pitch := -0.15
@@ -176,8 +160,6 @@ var _rope_mm: MultiMesh
 var _next_hip: GrappleHook = null
 var _primary: GrappleHook = null
 var _grace_t := -1.0
-var _dual_t := 0.0
-var _nest_point := Vector3.ZERO
 
 
 func _ready() -> void:
@@ -421,101 +403,119 @@ func _handle_hook_input(delta: float) -> void:
 	if _grace_t >= 0.0:
 		_grace_t += delta
 
+	# Tab / R3: Target-Lock + Combat-Grapple (nochmal druecken = abbrechen)
+	if Input.is_action_just_pressed("target_lock"):
+		var ch := combat_hook()
+		if ch:
+			ch.release()
+		else:
+			_fire_combat_hook()
+
+	# RMB / LT: straffes Seil
 	if Input.is_action_just_pressed("grapple"):
-		if _primary != null and _primary.active and _grace_t >= 0.0 and dual_mode == DualMode.NONE:
-			# Doppel-Tap: erster Haken wird wieder gespannt, zweiter feuert.
+		if _grace_t >= 0.0 and rope_hooks_out() > 0:
+			# Doppel-Tap: Seile wieder straff, zweiter Haken feuert (falls frei).
 			_grace_t = -1.0
-			_primary.slack = false
-			_fire_second_hook()
-		elif hooks_out() == 0:
+			for h in hooks:
+				if h.active and not h.combat:
+					h.slack = false
+			if rope_hooks_out() == 1:
+				_fire_second_hook()
+		elif rope_hooks_out() == 0:
 			_fire_primary_hook()
 	elif Input.is_action_just_released("grapple"):
-		if dual_mode != DualMode.NONE:
-			_end_dual(true)
-		elif _primary != null and _primary.active:
-			_primary.slack = true
+		if rope_hooks_out() > 0:
+			for h in hooks:
+				if h.active and not h.combat:
+					h.slack = true
 			_grace_t = 0.0
 
 	if _grace_t > double_tap_window:
 		_grace_t = -1.0
-		_release_all_hooks()
-
-	# Sprung im Dual-Modus: Slingshot abfeuern bzw. aus dem Nest abspringen.
-	if dual_mode != DualMode.NONE and Input.is_action_just_pressed("jump"):
-		_jump_buffer_t = 0.0
-		_end_dual(true)
+		_release_rope_hooks()
 
 
-func _take_next_hip() -> GrappleHook:
+func rope_hooks_out() -> int:
+	var n := 0
+	for h in hooks:
+		if h.active and not h.combat:
+			n += 1
+	return n
+
+
+func combat_hook() -> GrappleHook:
+	for h in hooks:
+		if h.active and h.combat:
+			return h
+	return null
+
+
+## Naechste freie Huefte, abwechselnd links/rechts.
+func _take_free_hip() -> GrappleHook:
 	if _next_hip == null:
 		_next_hip = hook_left
-	var h := _next_hip
-	_next_hip = hook_right if h == hook_left else hook_left
-	return h
+	var first := _next_hip
+	var second := hook_right if first == hook_left else hook_left
+	for h in [first, second]:
+		if not h.active:
+			_next_hip = hook_right if h == hook_left else hook_left
+			return h
+	return null
 
 
 func _fire_primary_hook() -> void:
 	if aim_kind == AimKind.NONE:
 		return
-	var h := _take_next_hip()
+	var h := _take_free_hip()
+	if h == null:
+		return
 	var tgt := aim_target if aim_kind == AimKind.ENEMY else null
 	h.attach(aim_point, aim_normal, tgt, global_position)
 	_primary = h
-	var dir := (aim_point - global_position).normalized()
-	velocity += dir * combat_pull_impulse
+	if is_on_floor():
+		velocity.y = maxf(velocity.y, 4.0)
+	_refresh_state()
+
+
+func _fire_second_hook() -> void:
+	if aim_kind == AimKind.NONE or _primary == null or not _primary.active \
+			or aim_point.distance_to(_primary.anchor_world()) < dual_min_separation:
+		return  # kein zweites Ziel -> erster Haken bleibt einfach straff
+	var h := _take_free_hip()
+	if h == null:
+		return
+	var tgt := aim_target if aim_kind == AimKind.ENEMY else null
+	h.attach(aim_point, aim_normal, tgt, global_position)
+	_refresh_state()
+
+
+func _fire_combat_hook() -> void:
+	if lock_target == null:
+		return
+	var h := _take_free_hip()
+	if h == null:
+		return
+	var p := _lock_point_of(lock_target)
+	h.attach(p, Vector3.ZERO, lock_target, global_position, true)
+	velocity += (p - global_position).normalized() * combat_pull_impulse
 	if is_on_floor():
 		velocity.y = maxf(velocity.y, 6.0)
 	_refresh_state()
 
 
-func _fire_second_hook() -> void:
-	if aim_kind == AimKind.NONE \
-			or aim_point.distance_to(_primary.anchor_world()) < dual_min_separation:
-		return  # kein zweites Ziel -> erster Haken bleibt einfach gespannt
-	var h := hook_right if _primary == hook_left else hook_left
-	var tgt := aim_target if aim_kind == AimKind.ENEMY else null
-	h.attach(aim_point, aim_normal, tgt, global_position)
-	_next_hip = _primary
-	for hk in hooks:
-		hk.set_phase(GrappleHook.Phase.TETHER)
-	_dual_t = 0.0
-	slingshot_charge = 0.0
-	if _is_tight_space():
-		dual_mode = DualMode.NEST
-		var mid := (hook_left.anchor_world() + hook_right.anchor_world()) * 0.5
-		_nest_point = mid - Vector3.UP * nest_hang_offset
-		# Nie ueber die Anker hinaus nach oben ziehen (z. B. zwei Waende tief unten).
-		_nest_point.y = minf(_nest_point.y, maxf(global_position.y, mid.y - nest_hang_offset))
-	else:
-		dual_mode = DualMode.SLINGSHOT
-	_refresh_state()
+## Shift mit aktivem (straffem) Seil -> Turbo-Pull.
+func is_turbo() -> bool:
+	if not Input.is_action_pressed("sprint"):
+		return false
+	for h in hooks:
+		if h.active and not h.slack and not h.combat:
+			return true
+	return false
 
 
-func _is_tight_space() -> bool:
-	var a := hook_left.anchor_world()
-	var b := hook_right.anchor_world()
-	var p := global_position
-	var close := p.distance_to(a) <= nest_radius and p.distance_to(b) <= nest_radius
-	var ceiling := hook_left.normal.y < -0.6 and hook_right.normal.y < -0.6
-	return close or ceiling
-
-
-func _end_dual(launch: bool) -> void:
-	var mode := dual_mode
-	dual_mode = DualMode.NONE
-	_release_all_hooks()
-	if not launch:
-		return
-	if mode == DualMode.SLINGSHOT:
-		var dir := aim_forward()
-		if dir.y < slingshot_min_up:
-			dir.y = slingshot_min_up
-			dir = dir.normalized()
-		velocity = dir * lerpf(slingshot_min_speed, slingshot_max_speed, slingshot_charge)
-	elif mode == DualMode.NEST and Input.is_action_pressed("jump"):
-		var fwd := aim_forward()
-		velocity = fwd * nest_jump_speed + Vector3.UP * nest_jump_up
-	slingshot_charge = 0.0
+## Aktuelle Einzugsgeschwindigkeit der Winde (m/s).
+func winch_speed() -> float:
+	return reel_speed * reel_base_mult * (reel_turbo_mult if is_turbo() else 1.0)
 
 
 func _process_hooked(wish: Vector3, delta: float) -> void:
@@ -526,154 +526,129 @@ func _process_hooked(wish: Vector3, delta: float) -> void:
 			h.phase_time += delta
 			h.update_bends(space, global_position, velocity, ex, grapple_mask)
 
-	match dual_mode:
-		DualMode.NEST:
-			_process_nest(delta)
-			return
-		DualMode.SLINGSHOT:
-			_process_slingshot(wish, delta)
-			return
+	var ch := combat_hook()
+	if ch and ch.phase == GrappleHook.Phase.DIVE:
+		_process_dive(ch)
+		return
 
-	var diving := false
+	velocity.y -= gravity * delta
+	_rope_steer(wish, delta)
+	if is_on_floor():
+		_try_ground_jump()
+	if ch:
+		_combat_pull(ch, delta)
+	_solve_ropes(delta)
+
+
+## Straffe Seile mit Winde. Alle Seile werden aus derselben Ausgangs-
+## Geschwindigkeit geloest und summiert -> zwei Seile kaempfen nicht gegeneinander.
+func _solve_ropes(delta: float) -> void:
+	var v0 := velocity
+	var dv := Vector3.ZERO
+	var speed := winch_speed()
 	for h in hooks:
-		if h.active and h.phase == GrappleHook.Phase.DIVE:
-			diving = true
-	if not diving:
-		velocity.y -= gravity * delta
-		velocity += wish * hook_steer_accel * delta
-		if is_on_floor():
-			_try_ground_jump()
+		if not h.active or h.slack or h.combat:
+			continue
+		var to := h.pivot() - global_position
+		var dist := to.length()
+		if dist < 0.01:
+			continue
+		var dir := to / dist
+		# Straff: das Seil laesst nie nach.
+		h.rope_length = minf(h.rope_length, dist)
+		# Winde: Laenge schrumpft gleichmaessig. Kommt der Spieler nicht hinterher
+		# (z. B. zweites Seil haelt dagegen), laeuft sie nicht weiter davon -> kein Zerren.
+		var max_gap := maxf(speed / rope_response, 0.1)
+		if h.rope_length > hang_length:
+			h.rope_length = maxf(h.rope_length - speed * delta, maxf(dist - max_gap, hang_length))
+		h.rope_length = clampf(h.rope_length, rope_min_length, grapple_range)
+		var gap := dist - h.rope_length
+		if gap <= 0.0 and v0.dot(dir) >= 0.0:
+			continue
+		var desired := minf(gap * rope_response, maxf(speed, 4.0))
+		var radial_in := v0.dot(dir)
+		if radial_in < desired:
+			dv += dir * (desired - radial_in)
+	velocity = v0 + dv
 
+
+## WASD am Seil: nur tangential zum Seil -> Pendel/Flugbahn steuern, ohne
+## gegen das Seil zu arbeiten.
+func _rope_steer(wish: Vector3, delta: float) -> void:
+	if wish == Vector3.ZERO:
+		return
+	var axis := Vector3.ZERO
 	for h in hooks:
 		if h.active and not h.slack:
-			_apply_hook(h, delta)
-
-
-func _process_slingshot(wish: Vector3, delta: float) -> void:
-	# Beide Seile ziehen sich zusammen -> Spannung baut sich auf.
-	_dual_t += delta
-	slingshot_charge = clampf(_dual_t / slingshot_charge_time, 0.0, 1.0)
-	velocity.y -= gravity * 0.5 * delta
-	velocity += wish * hook_steer_accel * 0.5 * delta
-	velocity *= 1.0 - minf(2.5 * delta, 1.0)  # Seil-Spannung daempft
-	for h in hooks:
-		var dist := global_position.distance_to(h.pivot())
-		h.rope_length = maxf(minf(h.rope_length, dist) - slingshot_reel_speed * delta, rope_min_length)
-		_rope_constraint(h, delta)
-
-
-func _process_nest(delta: float) -> void:
-	# Stabiler Haengepunkt: sanft dorthin ziehen und fixieren, keine Schwerkraft.
-	_dual_t += delta
-	var to := _nest_point - global_position
-	var target_v := to * nest_stiffness
-	velocity = velocity.lerp(target_v, 1.0 - exp(-10.0 * delta))
-
-
-func _apply_hook(h: GrappleHook, delta: float) -> void:
-	var to := h.pivot() - global_position
-	var dist := to.length()
-	if dist < 0.01:
+			axis += (h.pivot() - global_position).normalized()
+	if axis.length() < 0.01:
+		velocity += wish * rope_steer_accel * delta
 		return
-	var dir := to / dist
-	_grapple_forces(h, dir, dist, delta)
-	if h.phase == GrappleHook.Phase.DIVE:
+	axis = axis.normalized()
+	var tangent := wish - axis * wish.dot(axis)
+	velocity += tangent * rope_steer_accel * delta
+
+
+## Combat-Grapple: mit voller Wucht ueber das Ziel, dann Sturzangriff.
+func _combat_pull(h: GrappleHook, delta: float) -> void:
+	if not is_instance_valid(h.target):
+		h.release()
 		return
-	_rope_constraint(h, delta)
+	var goal := h.pivot()
+	if not h.has_bends():
+		goal = _lock_point_of(h.target) + Vector3.UP * dive_height
+	var to_goal := goal - global_position
+	var gdist := to_goal.length()
+	var gdir := to_goal / maxf(gdist, 0.001)
+	if velocity.dot(gdir) < combat_pull_max_speed:
+		velocity += gdir * combat_pull_accel * delta
+	var along := gdir * velocity.dot(gdir)
+	velocity = along + (velocity - along) * (1.0 - minf(pull_homing * delta, 1.0))
+	var passed := h.closest < pull_arrive_window and gdist > h.closest + 0.5
+	h.closest = minf(h.closest, gdist)
+	if not h.has_bends() and (gdist < dive_trigger_radius or passed):
+		h.set_phase(GrappleHook.Phase.DIVE)
 
 
-## Seil-Constraint: nach aussen gerichtete Geschwindigkeit entfernen -> Swing.
-func _rope_constraint(h: GrappleHook, delta: float) -> void:
-	var to := h.pivot() - global_position
-	var dist := to.length()
-	if dist < 0.01:
+func _process_dive(h: GrappleHook) -> void:
+	if not is_instance_valid(h.target) or h.phase_time > 0.6:
+		h.release()
 		return
-	var dir := to / dist
-	h.rope_length = clampf(h.rope_length, rope_min_length, grapple_range)
-	if dist >= h.rope_length:
-		var outward := -velocity.dot(dir)
-		if outward > 0.0:
-			velocity += dir * outward
-		velocity += dir * minf(dist - h.rope_length, 2.0) * rope_stiffness * delta
+	var to_t := _lock_point_of(h.target) - global_position
+	velocity = to_t.normalized() * dive_speed
+	if to_t.length() < dive_hit_radius:
+		_end_dive(h)
 
 
-## Shift in der Luft mit aktivem Seil -> Turbo-Einzug.
-func is_turbo() -> bool:
-	return Input.is_action_pressed("sprint") and any_hook_active() and not is_on_floor()
-
-
-## Aktueller Einzugs-Faktor: sanfte Basis, mit Shift-Turbo 1.5x davon.
-func reel_mult() -> float:
-	return reel_base_mult * (reel_turbo_mult if is_turbo() else 1.0)
-
-
-func _grapple_forces(h: GrappleHook, dir: Vector3, dist: float, delta: float) -> void:
-	var m := reel_mult()
-	match h.phase:
-		GrappleHook.Phase.PULL:
-			var goal := h.pivot()
-			if is_instance_valid(h.target) and not h.has_bends():
-				goal = _lock_point_of(h.target) + Vector3.UP * dive_height
-			var to_goal := goal - global_position
-			var gdist := to_goal.length()
-			var gdir := to_goal / maxf(gdist, 0.001)
-			if velocity.dot(gdir) < combat_pull_max_speed * m:
-				velocity += gdir * combat_pull_accel * m * delta
-			var along := gdir * velocity.dot(gdir)
-			velocity = along + (velocity - along) * (1.0 - minf(pull_homing * delta, 1.0))
-			h.rope_length = minf(h.rope_length, dist)
-			var passed := h.closest < pull_arrive_window and gdist > h.closest + 0.5
-			h.closest = minf(h.closest, gdist)
-			if not h.has_bends() and (gdist < rebound_radius or passed):
-				if is_instance_valid(h.target):
-					h.set_phase(GrappleHook.Phase.DIVE)
-				else:
-					_rebound(h, dist)
-		GrappleHook.Phase.DIVE:
-			if not is_instance_valid(h.target) or h.phase_time > 0.6:
-				_end_dive(h, null)
-				return
-			var to_t := _lock_point_of(h.target) - global_position
-			velocity = to_t.normalized() * dive_speed
-			if to_t.length() < dive_hit_radius:
-				_end_dive(h, h.target)
-		GrappleHook.Phase.TETHER:
-			# Einholen am haengenden Seil: Space (sanft) oder Shift (Turbo).
-			if Input.is_action_pressed("jump") or is_turbo():
-				h.rope_length = maxf(h.rope_length - reel_speed * m * delta, rope_min_length)
-				velocity += dir * combat_reel_accel * m * delta
-
-
-func _rebound(h: GrappleHook, dist: float) -> void:
-	# Am Ankerpunkt nicht stoppen: im Bogen drueber hinaus, Seil bleibt dran.
-	h.set_phase(GrappleHook.Phase.TETHER)
-	velocity += Vector3.UP * rebound_up
-	h.rope_length = maxf(dist, rebound_rope_length)
-
-
-func _end_dive(h: GrappleHook, hit_target: Node3D) -> void:
-	if hit_target:
-		knife.strike(hit_target, 1.0)
-		var away := Vector3(velocity.x, 0.0, velocity.z).normalized() * 4.0
-		velocity = away + Vector3.UP * dive_bounce
-	h.set_phase(GrappleHook.Phase.TETHER)
-	h.rope_length = maxf(global_position.distance_to(h.pivot()), rebound_rope_length)
+func _end_dive(h: GrappleHook) -> void:
+	# Treffer mit voller Sturzflug-Geschwindigkeit -> Momentum-Schaden, dann Abprall.
+	knife.strike(h.target)
+	var away := Vector3(velocity.x, 0.0, velocity.z).normalized() * 4.0
+	velocity = away + Vector3.UP * dive_bounce
+	h.release()
+	_refresh_state()
 
 
 func _check_dive_contact() -> void:
+	var ch := combat_hook()
+	if ch == null or ch.phase != GrappleHook.Phase.DIVE:
+		return
+	for i in get_slide_collision_count():
+		if get_slide_collision(i).get_collider() == ch.target:
+			_end_dive(ch)
+			return
+
+
+func _release_rope_hooks() -> void:
 	for h in hooks:
-		if not (h.active and h.phase == GrappleHook.Phase.DIVE):
-			continue
-		for i in get_slide_collision_count():
-			if get_slide_collision(i).get_collider() == h.target:
-				_end_dive(h, h.target)
-				return
+		if not h.combat:
+			h.release()
+	_primary = null
 
 
 func _release_all_hooks() -> void:
 	for h in hooks:
 		h.release()
-	dual_mode = DualMode.NONE
 	_grace_t = -1.0
 	_primary = null
 
@@ -692,15 +667,8 @@ func _update_aim() -> void:
 	var start := cam_pos + fwd * maxf((global_position - cam_pos).dot(fwd), 0.0)
 	var space := get_world_3d().direct_space_state
 
-	# 1) Gegner im Kegel (Fang-Radius = max(assist_radius, Distanz * tan(Kegel)))
-	var enemy := _find_lock_target(space, start, fwd)
-	if enemy:
-		aim_kind = AimKind.ENEMY
-		aim_target = enemy
-		aim_point = _lock_point_of(enemy)
-		aim_normal = Vector3.ZERO
-		aim_assisted = true
-		return
+	# 1) Target-Lock (Tab): Gegner im Kegel, Fang-Radius = max(assist_radius, Distanz * tan(Kegel))
+	lock_target = _find_lock_target(space, start, fwd)
 
 	# 2) Exakter Strahl unterm Fadenkreuz
 	var hit := _ray(space, start, start + fwd * grapple_range)
@@ -905,12 +873,12 @@ func _update_ropes(origin: Vector3, b: float) -> void:
 			continue
 		var side := -0.38 if h.kind == GrappleHook.Kind.HIP_LEFT else 0.38
 		var color := Color(0.55, 0.95, 1.0)
-		if dual_mode == DualMode.SLINGSHOT:
-			color = Color(1.0, 0.85 - 0.5 * slingshot_charge, 0.3)  # Spannung sichtbar
-		elif dual_mode == DualMode.NEST:
-			color = Color(0.7, 1.0, 0.6)
+		if h.combat:
+			color = Color(1.0, 0.45, 0.25)
 		elif h.slack:
-			color = Color(0.55, 0.95, 1.0, 0.5) * 0.6
+			color = Color(0.55, 0.95, 1.0) * 0.5
+		elif is_turbo():
+			color = Color(1.0, 0.8, 0.3)
 		var hand := origin + Vector3.UP * hip_up + right * side
 		var pts := h.render_points(hand)
 		for i in pts.size() - 1:

@@ -25,4 +25,4 @@ billboard = 1
 no_depth_test = true
 font_size = 48
 outline_size = 12
-text = "100"
+text = "300"

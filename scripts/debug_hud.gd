@@ -1,7 +1,8 @@
 extends CanvasLayer
 ## Debug-HUD (clean): nur Fadenkreuz + Infotext.
 ## Der Auto-Aim arbeitet unsichtbar im Hintergrund – Seil und Trefferpunkt
-## sieht der Spieler direkt in der Welt. Das Fadenkreuz faerbt sich nur dezent.
+## sieht der Spieler direkt in der Welt. Das Fadenkreuz faerbt sich nur dezent:
+## gruen = Seil-Ziel, orange = Gegner im Lock (Tab bereit).
 
 @export var guardian_path: NodePath
 
@@ -34,8 +35,8 @@ func _ready() -> void:
 	_hooks.position.y -= 90
 
 	var help := _make_label(
-			"WASD Laufen | Shift Sprint (am Seil: Turbo-Einzug) | Space Sprung / am Seil einholen | P Kamera\n"
-			+ "LMB Messer | RMB halten Grapple | RMB Doppel-Tap = 2. Haken (Slingshot / Nest) | R Reset", 14)
+			"WASD Laufen / am Seil steuern | Shift Sprint (am Seil: Turbo-Pull) | Space Sprung | P Kamera\n"
+			+ "LMB Messer | RMB halten Seil | RMB Doppel-Tap = 2. Haken | Tab Target-Lock / Sturzangriff | R Reset", 14)
 	help.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	help.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT)
 	help.position += Vector2(16, -56)
@@ -58,24 +59,21 @@ func _process(_delta: float) -> void:
 		return
 	var g := _guardian
 	var col := COL_IDLE
-	if g.aim_kind == GuardianController.AimKind.POINT:
-		col = COL_POINT
-	elif g.aim_kind == GuardianController.AimKind.ENEMY:
+	if g.lock_target != null:
 		col = COL_ENEMY
+	elif g.aim_kind != GuardianController.AimKind.NONE:
+		col = COL_POINT
 	_crosshair.modulate = col
 
-	var mode := ""
-	match g.dual_mode:
-		GuardianController.DualMode.SLINGSHOT:
-			mode = "   SLINGSHOT %d%%" % int(g.slingshot_charge * 100.0)
-		GuardianController.DualMode.NEST:
-			mode = "   NEST"
-	_hooks.text = "%s L   %s R%s" % [_dot(g.hook_left.active), _dot(g.hook_right.active), mode]
+	var extra := "   TURBO" if g.is_turbo() else ""
+	if g.combat_hook():
+		extra = "   DIVE"
+	_hooks.text = "%s L   %s R%s" % [_dot(g.hook_left.active), _dot(g.hook_right.active), extra]
 
 	var v := g.velocity
 	var horiz := Vector2(v.x, v.z).length()
-	_info.text = "Speed  %5.1f m/s  (horiz %5.1f)\nState  %s%s\nCam    %s\nFPS    %d" % [
-		v.length(), horiz, STATE_NAMES[g.state], "  TURBO" if g.is_turbo() else "",
+	_info.text = "Speed  %5.1f m/s  (horiz %5.1f)\nState  %s\nHit    %s\nCam    %s\nFPS    %d" % [
+		v.length(), horiz, STATE_NAMES[g.state], _hit_text(g.knife.last_hit),
 		"First-Person" if g.first_person else "Third-Person",
 		Engine.get_frames_per_second(),
 	]
@@ -83,3 +81,12 @@ func _process(_delta: float) -> void:
 
 func _dot(on: bool) -> String:
 	return "●" if on else "○"
+
+
+func _hit_text(h: Dictionary) -> String:
+	if h.is_empty():
+		return "-"
+	var t := "%d  (Speed x%.1f" % [h.damage, h.speed_mult]
+	if h.is_plunge:
+		t += ", PLUNGE x%.1f" % h.plunge_mult
+	return t + ")"

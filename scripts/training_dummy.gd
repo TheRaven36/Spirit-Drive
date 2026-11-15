@@ -5,11 +5,13 @@ extends StaticBody3D
 
 signal defeated
 
-@export var max_hp := 100.0
+@export var max_hp := 300.0
 @export var respawn_time := 3.0
 
-var hp := 100.0
+var hp := 300.0
 var hits_taken := 0
+var last_damage := 0.0
+var _dmg_show := 0.0
 
 @onready var _mesh: MeshInstance3D = $Mesh
 @onready var _label: Label3D = $HpLabel
@@ -43,6 +45,8 @@ func take_hit(damage: float, _dir: Vector3, _source: Node) -> void:
 		return
 	hits_taken += 1
 	hp -= damage
+	last_damage = damage
+	_dmg_show = 1.2
 	_flash = 0.15
 	if hp <= 0.0:
 		_down_t = respawn_time
@@ -55,6 +59,10 @@ func _process(delta: float) -> void:
 	if _flash > 0.0:
 		_flash -= delta
 	_mat.emission = Color(1, 1, 1) * (_flash / 0.15) * 2.0 if _flash > 0.0 else Color.BLACK
+	if _dmg_show > 0.0:
+		_dmg_show -= delta
+		if _dmg_show <= 0.0:
+			_update_label()
 	if _down_t > 0.0:
 		_down_t -= delta
 		if _down_t <= 0.0:
@@ -64,4 +72,7 @@ func _process(delta: float) -> void:
 
 
 func _update_label() -> void:
-	_label.text = "%d" % maxf(hp, 0.0) if _down_t <= 0.0 else "..."
+	var t := "%d" % maxf(hp, 0.0) if _down_t <= 0.0 else "..."
+	if _dmg_show > 0.0:
+		t += "   -%d" % last_damage
+	_label.text = t
