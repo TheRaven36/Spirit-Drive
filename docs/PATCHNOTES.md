@@ -2,6 +2,11 @@
 
 Neueste Einträge immer oben.
 
+## Unreleased
+
+### 2026-11-16 – CLAUDE.md
+- `CLAUDE.md` im Hauptverzeichnis: kurze Projektstruktur + verbindliches Code-Prinzip (minimal, klar, Engine-Funktionen nutzen).
+
 ## v0.9 – Release 2026-11-16
 
 ### 2026-11-16 – Dual-Hooks: echte Kraft-Vektorsumme v0.9
