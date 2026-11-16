@@ -28,6 +28,7 @@ var normal := Vector3.ZERO     # Oberflaechen-Normale am Anker (Decke: y < 0)
 var slack := false
 var bends: Array[Vector3] = []
 var rope_length := 0.0      # freie Laenge vom Pivot zum Spieler
+var pull := Vector3.ZERO    # Zugkraft dieser Winde im letzten Frame (m/s²)
 var attach_height := 0.0
 
 var _bend_lengths: Array[float] = []
@@ -55,6 +56,7 @@ func attach(point: Vector3, surface_normal: Vector3, hit_target: Node3D, player_
 
 
 func release() -> void:
+	pull = Vector3.ZERO
 	active = false
 	slack = false
 	combat = false

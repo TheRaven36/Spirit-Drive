@@ -7,6 +7,8 @@ extends CharacterBody3D
 ## Seile:    Dual-Hip-Grapple auf RMB / LT (zwei Werfer an linker + rechter Huefte).
 ##           - Klick/Halten: Haken der naechsten freien Huefte (abwechselnd L/R).
 ##             Straffes Seil, Winde zieht mit Basis 0.4 ein.
+##           - Zwei Seile: Zugkraefte werden vektoriell addiert (gleicher Anker = 2x
+##             Beschleunigung, gegenueberliegend = Querkraefte heben sich auf).
 ##           - Winde am Seil: W = Turbo (2.5x Basis), S = starres Seil (Laenge fix,
 ##             Winde steht, Schwung bleibt erhalten – reines Pendeln auf festem Radius).
 ##             A / D = seitlich quer zum Seil ausweichen / schwingen.
@@ -68,8 +70,17 @@ enum AimKind { NONE, POINT, ENEMY }
 @export var reel_turbo_mult := 2.5
 ## S am Seil = starres Seil: Laenge wird eingefroren (kein Einholen, kein Nachlassen),
 ## kein Daempfen – der Spieler pendelt verlustfrei auf festem Radius um den Pivot.
-## Wie hart das straffe Seil auf die Einzugsgeschwindigkeit nachregelt.
+## Zugkraft (Beschleunigung, m/s²) EINER Winde bei Faktor 1.0. Basis-Einzug = x reel_base_mult,
+## Turbo = zusaetzlich x reel_turbo_mult, Combat = x combat_reel_mult. Jede Winde zieht entlang
+## ihrer Huefte->Anker-Richtung; die Kraefte beider Seile werden vektoriell addiert
+## (gleiche Richtung = 2x Beschleunigung, gegenueberliegend = seitliche Anteile heben sich auf).
+## Die Kraft faellt linear ab, je naeher die Seil-Einzugsgeschwindigkeit an der Linien-
+## geschwindigkeit der Winde (winch_speed) liegt -> realistischer Motor, keine Endlos-Beschleunigung.
+@export var reel_force := 200.0
+## Wie hart das straffe Seil Ueberdehnung korrigiert (1/s) und kurz vor hang_length abbremst.
 @export var rope_response := 40.0
+## Gauss-Seidel-Iterationen fuer die Seil-Constraints (zwei Seile loesen sich gegenseitig auf).
+@export var rope_solver_iterations := 4
 ## Ab dieser Restlaenge stoppt die Winde – man haengt am Anker.
 @export var hang_length := 2.5
 @export var rope_min_length := 1.5
@@ -77,8 +88,9 @@ enum AimKind { NONE, POINT, ENEMY }
 @export var rope_steer_accel := 24.0
 ## Nach dem Loslassen haengt das Seil so lange locker (keine Kraft) – Fenster fuer den Doppel-Tap.
 @export var double_tap_window := 0.2
-## Mindestabstand der beiden Anker beim Doppel-Tap (zweite Oberflaeche).
-@export var dual_min_separation := 2.5
+## Mindestabstand der beiden Anker beim Doppel-Tap. 0 = beide Haken duerfen an denselben
+## Punkt/Pfeiler (doppelte Zugkraft).
+@export var dual_min_separation := 0.0
 
 # --- Hard-Lock / Combat-Grapple (Mausrad-Klick / R3, LMB) ----------------
 @export_group("Combat Grapple")
@@ -149,6 +161,9 @@ enum AimKind { NONE, POINT, ENEMY }
 
 const RESPAWN_Y := -40.0
 const MAX_ROPE_SEGMENTS := 32
+## Hueft-Werfer relativ zur Spieler-Mitte (seitlich / Hoehe).
+const HIP_SIDE := 0.38
+const HIP_UP := -0.15
 
 @onready var cam_rig: Node3D = $CameraRig
 @onready var cam_pitch: Node3D = $CameraRig/Pitch
@@ -204,6 +219,8 @@ var _grace_t := -1.0
 var _cycle_order: Array[Node3D] = []
 ## [zeit, geschwindigkeit] vor move_and_slide – Anflug-Momentum fuer den Schlag.
 var _vel_history: Array = []
+## Summe der Seil-Zugkraefte im letzten Physik-Frame (m/s², fuer HUD/Tests).
+var pull_force := Vector3.ZERO
 var _clock := 0.0
 ## Kamera-Snap: Fortschritt (s), -1 = kein Snap. Start-Winkel fuer die Ueberblendung.
 var _snap_t := -1.0
@@ -602,7 +619,8 @@ func _fire_primary_hook() -> void:
 
 func _fire_second_hook() -> void:
 	if aim_kind == AimKind.NONE or _primary == null or not _primary.active \
-			or aim_point.distance_to(_primary.anchor_world()) < dual_min_separation:
+			or (dual_min_separation > 0.0
+				and aim_point.distance_to(_primary.anchor_world()) < dual_min_separation):
 		return  # kein zweites Ziel -> erster Haken bleibt einfach straff
 	var h := _take_free_hip()
 	if h == null:
@@ -641,7 +659,21 @@ func is_rope_rigid() -> bool:
 			and any_hook_active()
 
 
-## Aktuelle Einzugsgeschwindigkeit der Winde (m/s) fuer ein Seil (0 bei starrem Seil).
+## Zugkraft (m/s²) der Winde eines Seils – 0 bei starrem Seil (S).
+func winch_force(h: GrappleHook = null) -> float:
+	if is_rope_rigid():
+		return 0.0
+	var base := reel_force * (combat_reel_mult if h != null and h.combat else reel_base_mult)
+	return base * (reel_turbo_mult if is_turbo() else 1.0)
+
+
+## Huefte, an der das Seil sitzt (Weltposition) – Ursprung der Zugrichtung.
+func hip_position(h: GrappleHook) -> Vector3:
+	var side := -HIP_SIDE if h.kind == GrappleHook.Kind.HIP_LEFT else HIP_SIDE
+	return global_position + Vector3.UP * HIP_UP + Basis(Vector3.UP, _yaw) * Vector3.RIGHT * side
+
+
+## Linien-Geschwindigkeit der Winde (m/s): bis hierhin zieht sie (0 bei starrem Seil).
 func winch_speed(h: GrappleHook = null) -> float:
 	if is_rope_rigid():
 		return 0.0
@@ -663,45 +695,69 @@ func _process_hooked(wish: Vector3, delta: float) -> void:
 	_solve_ropes(delta)
 
 
-## Straffe Seile mit Winde. Alle Seile werden aus derselben Ausgangs-
-## Geschwindigkeit geloest und summiert -> zwei Seile kaempfen nicht gegeneinander.
-## Starres Seil (S): Laenge bleibt exakt, wie sie ist. Das Seil nimmt nur die nach
-## aussen gerichtete Radial-Geschwindigkeit weg (Pendel-Constraint) – der tangentiale
-## Schwung bleibt vollstaendig erhalten. Innerhalb des Radius haengt es locker.
+## Seil-Physik mit echter Vektor-Summe:
+##   1) Jede aktive Winde i erzeugt eine Zugkraft  F_i = d_i * F_pull_i * (1 - v_i / v_max_i),
+##      d_i = Richtung Huefte -> Anker, v_i = aktuelle Einzugsgeschwindigkeit dieses Seils.
+##      F_total = F_links + F_rechts wird als Beschleunigung angewendet.
+##      Gleiche Richtung -> doppelte Beschleunigung; gegenueberliegend -> Querkraefte heben
+##      sich auf, gemeinsame Anteile (z. B. nach oben/vorne) addieren sich.
+##   2) Straff: Seillaenge = min(Laenge, Distanz) – das Seil laesst nie nach.
+##      Starr (S): Laenge eingefroren, F_pull = 0.
+##   3) Constraints: kein Seil darf sich dehnen. Iterativ (Gauss-Seidel), damit zwei Seile
+##      sich gegenseitig aufloesen statt gegeneinander zu kaempfen. Das Seil nimmt nur die
+##      nach aussen gerichtete Radial-Geschwindigkeit – tangentialer Schwung bleibt erhalten.
 func _solve_ropes(delta: float) -> void:
-	var v0 := velocity
-	var dv := Vector3.ZERO
 	var rigid := is_rope_rigid()
+	var live: Array[GrappleHook] = []
 	for h in hooks:
-		if not h.active or h.slack:
+		if h.active and not h.slack and global_position.distance_to(h.pivot()) > 0.01:
+			live.append(h)
+	# --- 1) Zugkraefte pro Seil, vektoriell summiert -----------------------
+	var f_total := Vector3.ZERO
+	for h in live:
+		h.pull = Vector3.ZERO
+		var f := winch_force(h)
+		var vmax := winch_speed(h)
+		if f <= 0.0 or vmax <= 0.0 or h.rope_length <= hang_length:
 			continue
-		var speed := winch_speed(h)
-		var to := h.pivot() - global_position
-		var dist := to.length()
-		if dist < 0.01:
+		var to_anchor := h.pivot() - hip_position(h)
+		if to_anchor.length() < 0.01:
 			continue
-		var dir := to / dist
+		var dir := to_anchor.normalized()
+		# Kurz vor hang_length laeuft die Winde aus (kein Einschlag am Anker).
+		var dist := global_position.distance_to(h.pivot())
+		vmax = minf(vmax, maxf(dist - hang_length, 0.0) * rope_response)
+		var v_in := velocity.dot(dir)
+		var k := clampf(1.0 - v_in / maxf(vmax, 0.001), 0.0, 1.0)
+		h.pull = dir * f * k
+		f_total += h.pull
+	pull_force = f_total
+	velocity += f_total * delta
+	# --- 2) Seillaengen ----------------------------------------------------
+	for h in live:
+		var dist := global_position.distance_to(h.pivot())
 		if not rigid:
-			# Straff: das Seil laesst nie nach.
 			h.rope_length = minf(h.rope_length, dist)
-			# Winde: Laenge schrumpft gleichmaessig. Kommt der Spieler nicht hinterher
-			# (z. B. zweites Seil haelt dagegen), laeuft sie nicht weiter davon -> kein Zerren.
-			var max_gap := maxf(speed / rope_response, 0.05)
-			if h.rope_length > hang_length:
-				h.rope_length = maxf(h.rope_length - speed * delta, maxf(dist - max_gap, hang_length))
 		h.rope_length = clampf(h.rope_length, rope_min_length, grapple_range * lock_keep_range_mult)
-		var gap := dist - h.rope_length
-		if gap <= 0.0 and v0.dot(dir) >= 0.0:
-			continue
-		var desired := minf(gap * rope_response, maxf(speed, 4.0))
-		if rigid:
-			# Starr: innerhalb des Radius frei (genau bis an den Radius in diesem Frame),
-			# bei Ueberdehnung nur sanfte Positionskorrektur – keine Winde, kein Daempfen.
-			desired = gap / maxf(delta, 0.0001) if gap <= 0.0 else minf(gap * rope_response, 6.0)
-		var radial_in := v0.dot(dir)
-		if radial_in < desired:
-			dv += dir * (desired - radial_in)
-	velocity = v0 + dv
+	# --- 3) Laengen-Constraints (iterativ) ---------------------------------
+	for it in rope_solver_iterations:
+		for h in live:
+			var to := h.pivot() - global_position
+			var dist := to.length()
+			var dir := to / dist
+			var gap := dist - h.rope_length
+			# gap <= 0: innerhalb des Radius frei, aber hoechstens bis an den Radius in diesem Frame.
+			# gap > 0: Ueberdehnung sanft zurueckholen.
+			var min_in := gap / maxf(delta, 0.0001) if gap <= 0.0 else minf(gap * rope_response, 6.0)
+			var v_in := velocity.dot(dir)
+			if v_in < min_in:
+				velocity += dir * (min_in - v_in)
+	# Straff auch fuer die Bewegung dieses Frames: Laenge folgt der vorhergesagten Distanz.
+	if not rigid:
+		var next := global_position + velocity * delta
+		for h in live:
+			h.rope_length = clampf(minf(h.rope_length, next.distance_to(h.pivot())),
+					rope_min_length, grapple_range * lock_keep_range_mult)
 
 
 ## A / D am Seil: seitlich quer zum Seil ausweichen / schwingen.
@@ -1220,12 +1276,12 @@ func _build_rope_renderer() -> void:
 
 func _update_ropes(origin: Vector3, b: float) -> void:
 	var right := cam_rig.global_basis.x
-	var hip_up := lerpf(-0.15, -0.35, b)  # Werfer sitzen an der Huefte
+	var hip_up := lerpf(HIP_UP, -0.35, b)  # Werfer sitzen an der Huefte
 	var n := 0
 	for h in hooks:
 		if not h.active:
 			continue
-		var side := -0.38 if h.kind == GrappleHook.Kind.HIP_LEFT else 0.38
+		var side := -HIP_SIDE if h.kind == GrappleHook.Kind.HIP_LEFT else HIP_SIDE
 		var color := Color(0.55, 0.95, 1.0)
 		if h.combat:
 			color = Color(1.0, 0.45, 0.25)

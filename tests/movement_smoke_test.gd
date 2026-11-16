@@ -28,6 +28,7 @@ func _run() -> void:
 	await _test_rigid_rope()
 	await _test_rope_steering()
 	await _test_dual_hooks()
+	await _test_dual_force_sum()
 	await _test_hip_alternation()
 	await _test_hard_lock_toggle()
 	await _test_lock_cycling_giant()
@@ -293,6 +294,155 @@ func _test_dual_hooks() -> void:
 	_check(g.hooks_out() == 0, "Loslassen loest beide Haken")
 	await _frames(60)
 	_first_person(false)
+
+
+func _test_dual_force_sum() -> void:
+	print("Dual-Hooks: Kraft-Vektorsumme")
+	var air := Vector3(0, 70.0, 0)
+	# (a) gleicher Anker: doppelte Beschleunigung (Basis und Turbo)
+	for turbo in [false, true]:
+		var one := await _pull_step(air, [air + Vector3(0, 0, -30)], turbo)
+		var two := await _pull_step(air, [air + Vector3(0, 0, -30), air + Vector3(0, 0, -30)], turbo)
+		var r_f: float = two.force / maxf(one.force, 0.001)
+		var r_a: float = two.accel / maxf(one.accel, 0.001)
+		_check(r_f > 1.95 and r_f < 2.05 and r_a > 1.9 and r_a < 2.1,
+				"%s: 2 Haken am selben Punkt = %.2fx Kraft, %.2fx Beschleunigung (%.0f vs %.0f m/s²)"
+				% ["Turbo" if turbo else "Basis", r_f, r_a, two.accel, one.accel])
+	# (b) symmetrisch links/rechts: Querkraft hebt sich auf, Zug entlang der Winkelhalbierenden
+	var sym := await _pull_run(air, [air + Vector3(-10, 10, 0), air + Vector3(10, 10, 0)], 30)
+	_check(absf(sym.force.x) < 0.01 and sym.force.y > 0.0,
+			"links/rechts: Querkraefte heben sich auf (F = %s)" % _vs(sym.force))
+	var f_single: float = g.winch_force()
+	_check(absf(sym.force.y - 2.0 * f_single * cos(PI / 4.0)) < 0.05 * f_single,
+			"gemeinsamer Anteil addiert sich (%.0f ≈ 2·F·cos45° = %.0f m/s²)" % [sym.force.y, 2.0 * f_single * cos(PI / 4.0)])
+	_check(absf(sym.vel.x) < 0.05 and absf(sym.disp.x) < 0.05 and sym.disp.y > 1.0,
+			"Spieler steigt gerade nach oben (seitlich %.3f m/s, %.3f m)" % [sym.vel.x, sym.disp.x])
+	# (c) beliebiger Winkel: Summe = d1 + d2 (gleiche Kraft je Seil)
+	var a1 := air + Vector3(-12, 8, -4)
+	var a2 := air + Vector3(3, 6, -14)
+	var ang := await _pull_step(air, [a1, a2], false)
+	var hip_l := air + Vector3(-GuardianController.HIP_SIDE, GuardianController.HIP_UP, 0)  # Yaw 0
+	var hip_r := air + Vector3(GuardianController.HIP_SIDE, GuardianController.HIP_UP, 0)
+	var expect := ((a1 - hip_l).normalized() + (a2 - hip_r).normalized()) * g.winch_force()
+	_check(ang.vec.distance_to(expect) < 0.5,
+			"schraeg: F_total = F_links + F_rechts (%s ≈ %s)" % [_vs(ang.vec), _vs(expect)])
+	# (d) S mit zwei Seilen: keine Zugkraft, beide Laengen fix, Schwung bleibt
+	var rig := await _pull_run(air, [air + Vector3(-10, 15, 0), air + Vector3(10, 15, 0)], 50,
+			Vector3(0, 0, 15), "move_back")
+	_check(rig.max_force < 0.001, "S: Zugkraft = 0 auf beiden Seilen")
+	_check(rig.len_drift < 0.001 and rig.max_stretch < 0.15,
+			"S: beide Seillaengen fix (Drift %.4f m, Dehnung %.3f m)" % [rig.len_drift, rig.max_stretch])
+	_check(rig.energy_ratio > 0.9 and rig.energy_ratio < 1.05,
+			"S: Doppel-Pendel ohne Schwungverlust (Energie %.0f %%)" % (rig.energy_ratio * 100.0))
+	# (e) Gameplay: Doppel-Tap auf denselben Pfeiler haengt beide Haken an
+	await _place(Vector3(0, 1.2, 0), 0.0, 0.0)
+	var t := _closest_tower()
+	_aim_at(t.pos + Vector3(0, t.size.y * 0.3, 0))
+	await _process_frames(2)
+	await _frames(1)
+	Input.action_press("grapple")
+	await _frames(4)
+	Input.action_release("grapple")
+	await _frames(2)
+	Input.action_press("grapple")
+	await _frames(2)
+	_check(g.hooks_out() == 2 and g.hook_left.anchor_world().distance_to(g.hook_right.anchor_world()) < 0.5,
+			"Doppel-Tap auf denselben Pfeiler: beide Haken am selben Punkt")
+	_release_all()
+	await _frames(int(g.double_tap_window * 60.0) + 3)
+	await _frames(40)
+	# (f) 2x Turbo auf eine Wand: kein Durchtunneln, Tempo gedeckelt
+	await _place(Vector3(0, 1.2, 0), 0.0, 0.0)
+	t = _closest_tower()
+	var aim: Vector3 = t.pos + Vector3(0, t.size.y * 0.3, 0)
+	_aim_at(aim)
+	await _process_frames(2)
+	await _frames(1)
+	g._fire_primary_hook()
+	g._fire_second_hook()
+	_check(g.hooks_out() == 2, "zwei Haken fuer den Turbo-Test")
+	Input.action_press("grapple")
+	Input.action_press("move_forward")
+	var inside := false
+	var vmax := 0.0
+	for i in 150:
+		await physics_frame
+		vmax = maxf(vmax, g.velocity.length())
+		var l: Vector3 = (g.global_position - t.pos).abs()
+		if l.x < t.size.x * 0.5 - 0.05 and l.y < t.size.y * 0.5 and l.z < t.size.z * 0.5 - 0.05:
+			inside = true
+	Input.action_release("move_forward")
+	_check(not inside, "2x Turbo: kein Tunneln durch den Pfeiler")
+	_check(vmax <= g.terminal_speed + 0.01, "Tempo bleibt gedeckelt (max. %.1f m/s)" % vmax)
+	_release_all()
+	await _frames(int(g.double_tap_window * 60.0) + 3)
+	await _frames(60)
+
+
+## Ein Physik-Frame mit Seilen an `anchors` (in der Luft, aus dem Stand). Liefert Zugkraft
+## und gemessene Beschleunigung entlang der Kraft (ohne Schwerkraft-Anteil).
+func _pull_step(pos: Vector3, anchors: Array, turbo: bool) -> Dictionary:
+	await _hang_from(pos, anchors, Vector3.ZERO)
+	if turbo:
+		Input.action_press("move_forward")
+	await physics_frame
+	var f := g.pull_force
+	var dv := g.velocity + Vector3.UP * g.gravity / 60.0  # Schwerkraft herausrechnen
+	Input.action_release("move_forward")
+	var res := {"force": f.length(), "vec": f, "accel": dv.dot(f.normalized()) * 60.0}
+	await _unhang()
+	return res
+
+
+## Mehrere Frames haengen; misst Kraft, Versatz, Seil-Drift, Energie.
+func _pull_run(pos: Vector3, anchors: Array, n: int, v0 := Vector3.ZERO, key := "") -> Dictionary:
+	await _hang_from(pos, anchors, v0)
+	if key != "":
+		Input.action_press(key)
+	var start := g.global_position
+	var l0 := [g.hook_left.rope_length, g.hook_right.rope_length]
+	var e0 := 0.5 * g.velocity.length_squared() + g.gravity * g.global_position.y
+	var force := Vector3.ZERO
+	var max_force := 0.0
+	var len_drift := 0.0
+	var max_stretch := 0.0
+	for i in n:
+		await physics_frame
+		if i == 0:
+			force = g.pull_force
+		max_force = maxf(max_force, g.pull_force.length())
+		for j in 2:
+			var h: GrappleHook = g.hooks[j]
+			len_drift = maxf(len_drift, absf(h.rope_length - l0[j]))
+			max_stretch = maxf(max_stretch, g.global_position.distance_to(h.pivot()) - h.rope_length)
+	if key != "":
+		Input.action_release(key)
+	var e1 := 0.5 * g.velocity.length_squared() + g.gravity * g.global_position.y
+	var res := {"force": force, "max_force": max_force, "vel": g.velocity,
+			"disp": g.global_position - start, "len_drift": len_drift, "max_stretch": max_stretch,
+			"energy_ratio": e1 / e0}
+	await _unhang()
+	return res
+
+
+func _hang_from(pos: Vector3, anchors: Array, v0: Vector3) -> void:
+	await _place(pos, 0.0, 0.0)
+	for i in anchors.size():
+		var h: GrappleHook = g.hook_left if i == 0 else g.hook_right
+		h.attach(anchors[i], Vector3.DOWN, null, g.global_position)
+	g._primary = g.hook_left
+	g.velocity = v0
+	g._refresh_state()
+
+
+func _unhang() -> void:
+	g._release_all_hooks()
+	await _place(Vector3(0, 1.2, -10.0), 0.0, 0.0)
+	await _frames(3)
+
+
+func _vs(v: Vector3) -> String:
+	return "(%.1f, %.1f, %.1f)" % [v.x, v.y, v.z]
 
 
 func _test_hip_alternation() -> void:

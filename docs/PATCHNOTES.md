@@ -4,6 +4,34 @@ Neueste Einträge immer oben.
 
 ## Unreleased (Robin-Branch)
 
+### 2026-11-16 – Dual-Hooks: echte Kraft-Vektorsumme v0.9
+**Neues Seil-Modell (Kraft statt Geschwindigkeits-Regelung)**
+- Jede Winde zieht mit eigener Kraft entlang ihrer **Hüfte → Anker**-Richtung:
+  `F_i = d_i · F_pull · (1 − v_i / v_max)`. `F_total = F_links + F_rechts` wird als Beschleunigung angewendet.
+- `F_pull` = `reel_force` (200 m/s²) × Basis 0,4 / Combat 1,0, Turbo (W) zusätzlich × 2,5. Die Kraft läuft aus,
+  je näher die Einzugsgeschwindigkeit an der Linien-Geschwindigkeit der Winde liegt (wie ein Motor) – das hält
+  Basis- und Turbo-Tempo wie bisher (9,6 / 24 m/s) und verhindert Endlos-Beschleunigung.
+- **Gleicher Anker/gleiche Richtung = 2× Beschleunigung** (Basis 160 statt 80 m/s², Turbo 400 statt 200 m/s²).
+  Gegen die Schwerkraft merkt man das deutlich: zwei Seile heben schneller als eins.
+- **Gegenüberliegende Anker:** Querkräfte heben sich auf, gemeinsame Anteile addieren sich (links/rechts oben →
+  gerade nach oben, 2·F·cos 45°).
+- Seillängen sind harte Constraints, iterativ gelöst (`rope_solver_iterations`), damit zwei Seile nicht
+  gegeneinander arbeiten. Das Seil nimmt nur die nach außen gerichtete Radial-Geschwindigkeit weg.
+- **S (starr)** mit einem oder zwei Seilen: Zugkraft 0, beide Längen eingefroren, Schwung bleibt erhalten.
+- Doppel-Tap darf jetzt **denselben Punkt/Pfeiler** treffen (`dual_min_separation` = 0, vorher 2,5 m Pflichtabstand).
+- Die Seile hängen physikalisch an den Hüft-Werfern (`HIP_SIDE` 0,38 m, `HIP_UP` −0,15 m) – dieselben Punkte wie
+  die sichtbaren Seile.
+
+**High-Speed-Schutz**
+- `move_and_slide` fegt die Kollisionsform kontinuierlich (kein Tunneln durch Geometrie mit Volumen), dazu bleibt
+  die Linien-Geschwindigkeit der Winde die Obergrenze fürs Einziehen (auch bei 2× Turbo) und `terminal_speed`
+  (75 m/s) deckelt das Gesamttempo.
+
+**Tests**
+- Smoke-Test: 137 Checks (neu: 2× Kraft/Beschleunigung am selben Anker in Basis und Turbo, links/rechts-Auslöschung
+  und gerader Aufstieg, schräge Anker = exakte Vektorsumme, S mit zwei Seilen, Doppel-Tap auf denselben Pfeiler,
+  2× Turbo gegen einen Pfeiler ohne Tunneln).
+
 ### 2026-11-16 – Starres Seil auf S, Piercing-Schaden mit Distanz-Abfall v0.8
 **S am Seil = starres Seil (ersetzt die Bremse)**
 - S friert die Seillänge ein: kein Einholen, kein Nachlassen, keine Schwung-Dämpfung mehr (`reel_brake_mult` und
