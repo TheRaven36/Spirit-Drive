@@ -2,7 +2,7 @@
 
 Neueste Einträge immer oben.
 
-## Unreleased (Robin-Branch)
+## v0.9 – Release 2026-11-16
 
 ### 2026-11-16 – Dual-Hooks: echte Kraft-Vektorsumme v0.9
 **Neues Seil-Modell (Kraft statt Geschwindigkeits-Regelung)**
