@@ -12,6 +12,8 @@ Kein Gameplay-Unterschied: Smoke-Test liefert dieselben Messwerte wie vorher.
 - **Combat/Targeting:** Ziel-Suche über einen gemeinsamen Filter (`_lockables_within`), doppelte Aim-Start-/
   Lock-Punkt-Berechnungen entfernt, ungenutzter `toggle_hard_lock` gestrichen. Messer: ein `swing_radius()`
   für Kugel und Piercing-Bahn, `_pierce_entry` für die Debug-Liste. HUD-Treffertext vereinfacht.
+- **Testarena:** Riese baut Körperteile/Lock-Punkte über `_add_part`/`_add_lock_point`, Flash-/Anzeige-Zeiten
+  bei Dummy und Riese als Konstanten, Arena-Kollision ohne Zwischenvariablen.
 
 ### 2026-11-16 – CLAUDE.md
 - `CLAUDE.md` im Hauptverzeichnis: kurze Projektstruktur + verbindliches Code-Prinzip (minimal, klar, Engine-Funktionen nutzen).

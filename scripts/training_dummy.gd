@@ -5,6 +5,9 @@ extends StaticBody3D
 
 signal defeated
 
+const FLASH_TIME := 0.15
+const DMG_SHOW_TIME := 1.2
+
 @export var max_hp := 300.0
 @export var respawn_time := 3.0
 
@@ -53,8 +56,8 @@ func take_hit(damage: float, _dir: Vector3, _source: Node) -> void:
 	hits_taken += 1
 	hp -= damage
 	last_damage = damage
-	_dmg_show = 1.2
-	_flash = 0.15
+	_dmg_show = DMG_SHOW_TIME
+	_flash = FLASH_TIME
 	if hp <= 0.0:
 		_down_t = respawn_time
 		_mesh.visible = false
@@ -63,9 +66,8 @@ func take_hit(damage: float, _dir: Vector3, _source: Node) -> void:
 
 
 func _process(delta: float) -> void:
-	if _flash > 0.0:
-		_flash -= delta
-	_mat.emission = Color(1, 1, 1) * (_flash / 0.15) * 2.0 if _flash > 0.0 else Color.BLACK
+	_flash = maxf(_flash - delta, 0.0)
+	_mat.emission = Color.WHITE * (_flash / FLASH_TIME) * 2.0
 	if _dmg_show > 0.0:
 		_dmg_show -= delta
 		if _dmg_show <= 0.0:
