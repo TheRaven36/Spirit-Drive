@@ -207,7 +207,7 @@ func _test_rigid_rope() -> void:
 func _air_swing(hold_s: bool) -> Dictionary:
 	await _place(Vector3(0, 70.0, 0), 0.0, 0.0)
 	var anchor := g.global_position + Vector3(0, 15.0, 0)
-	g.hook_left.attach(anchor, Vector3.DOWN, null, g.global_position)
+	g.hook_left.attach(anchor, null, g.global_position)
 	g._primary = g.hook_left
 	g.velocity = Vector3(20.0, 0, 0)
 	g._refresh_state()
@@ -429,7 +429,7 @@ func _hang_from(pos: Vector3, anchors: Array, v0: Vector3) -> void:
 	await _place(pos, 0.0, 0.0)
 	for i in anchors.size():
 		var h: GrappleHook = g.hook_left if i == 0 else g.hook_right
-		h.attach(anchors[i], Vector3.DOWN, null, g.global_position)
+		h.attach(anchors[i], null, g.global_position)
 	g._primary = g.hook_left
 	g.velocity = v0
 	g._refresh_state()

@@ -23,13 +23,11 @@ var combat := false
 var target: Node3D = null
 var target_offset := Vector3.ZERO
 var anchor := Vector3.ZERO
-var normal := Vector3.ZERO     # Oberflaechen-Normale am Anker (Decke: y < 0)
 ## Slack = Taste losgelassen, Doppel-Tap-Fenster laeuft: Seil haengt locker, keine Kraft.
 var slack := false
 var bends: Array[Vector3] = []
 var rope_length := 0.0      # freie Laenge vom Pivot zum Spieler
 var pull := Vector3.ZERO    # Zugkraft dieser Winde im letzten Frame (m/s²)
-var attach_height := 0.0
 
 var _bend_lengths: Array[float] = []
 var _bend_planes: Array[Vector3] = []   # Normale * Seite der Wickel-Ebene
@@ -39,20 +37,15 @@ func _init(hook_kind: Kind) -> void:
 	kind = hook_kind
 
 
-func attach(point: Vector3, surface_normal: Vector3, hit_target: Node3D, player_pos: Vector3,
-		is_combat := false) -> void:
+func attach(point: Vector3, hit_target: Node3D, player_pos: Vector3, is_combat := false) -> void:
 	active = true
 	slack = false
 	combat = is_combat
-	normal = surface_normal
 	target = hit_target
 	anchor = point
 	target_offset = hit_target.global_transform.affine_inverse() * point if hit_target else Vector3.ZERO
-	bends.clear()
-	_bend_lengths.clear()
-	_bend_planes.clear()
+	_clear_bends()
 	rope_length = player_pos.distance_to(point)
-	attach_height = player_pos.y
 
 
 func release() -> void:
@@ -61,6 +54,10 @@ func release() -> void:
 	slack = false
 	combat = false
 	target = null
+	_clear_bends()
+
+
+func _clear_bends() -> void:
 	bends.clear()
 	_bend_lengths.clear()
 	_bend_planes.clear()
@@ -78,14 +75,6 @@ func pivot() -> Vector3:
 
 func has_bends() -> bool:
 	return not bends.is_empty()
-
-
-## Gesamtlaenge des Seils (fixe Segmente + freier Teil).
-func total_length() -> float:
-	var sum := rope_length
-	for l in _bend_lengths:
-		sum += l
-	return sum
 
 
 ## Punktkette fuer das Rendering: Spieler-Hand -> ... -> Anker.

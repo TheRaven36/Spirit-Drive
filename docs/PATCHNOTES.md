@@ -4,6 +4,12 @@ Neueste Einträge immer oben.
 
 ## Unreleased
 
+### 2026-11-16 – Code entschlackt (CLAUDE.md-Prinzip)
+Kein Gameplay-Unterschied: Smoke-Test liefert dieselben Messwerte wie vorher.
+- **Movement:** Seil-Zähler über `Array.any/filter`, Hüften-/Winden-/Kamera-Logik je einmal statt doppelt,
+  `Vector3.slide` für Wall-Run und Seil-Steuerung, Seil-Rendering in kurze Funktionen geteilt.
+  `GrappleHook`: ungenutzte Felder (`normal`, `attach_height`, `total_length`) entfernt.
+
 ### 2026-11-16 – CLAUDE.md
 - `CLAUDE.md` im Hauptverzeichnis: kurze Projektstruktur + verbindliches Code-Prinzip (minimal, klar, Engine-Funktionen nutzen).
 

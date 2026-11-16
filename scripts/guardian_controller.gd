@@ -164,6 +164,11 @@ const MAX_ROPE_SEGMENTS := 32
 ## Hueft-Werfer relativ zur Spieler-Mitte (seitlich / Hoehe).
 const HIP_SIDE := 0.38
 const HIP_UP := -0.15
+const PITCH_MIN := -1.45
+const PITCH_MAX := 1.35
+const ROPE_COLOR := Color(0.55, 0.95, 1.0)
+const ROPE_COLOR_COMBAT := Color(1.0, 0.45, 0.25)
+const ROPE_COLOR_TURBO := Color(1.0, 0.8, 0.3)
 
 @onready var cam_rig: Node3D = $CameraRig
 @onready var cam_pitch: Node3D = $CameraRig/Pitch
@@ -248,9 +253,7 @@ func _ready() -> void:
 # =========================================================================
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
-		_snap_t = -1.0  # Spieler uebernimmt sofort – Snap abbrechen
-		_yaw -= event.relative.x * mouse_sensitivity
-		_pitch = clampf(_pitch - event.relative.y * mouse_sensitivity, -1.45, 1.35)
+		_turn_camera(event.relative * mouse_sensitivity)
 	elif event.is_action_pressed("toggle_camera"):
 		toggle_camera()
 	elif event.is_action_pressed("hard_lock"):
@@ -265,6 +268,13 @@ func _unhandled_input(event: InputEvent) -> void:
 			and Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 		get_viewport().set_input_as_handled()
+
+
+## Spieler dreht die Kamera – ein laufender Snap wird sofort abgebrochen.
+func _turn_camera(amount: Vector2) -> void:
+	_snap_t = -1.0
+	_yaw -= amount.x
+	_pitch = clampf(_pitch - amount.y, PITCH_MIN, PITCH_MAX)
 
 
 func toggle_camera() -> void:
@@ -285,24 +295,13 @@ func aim_forward() -> Vector3:
 	return -camera.global_basis.z
 
 
-func _flat_forward() -> Vector3:
-	return Basis(Vector3.UP, _yaw) * Vector3.FORWARD
-
-
 ## Mindestens ein gespanntes Seil (lockere Seile im Doppel-Tap-Fenster zaehlen nicht).
 func any_hook_active() -> bool:
-	for h in hooks:
-		if h.active and not h.slack:
-			return true
-	return false
+	return hooks.any(func(h: GrappleHook) -> bool: return h.active and not h.slack)
 
 
 func hooks_out() -> int:
-	var n := 0
-	for h in hooks:
-		if h.active:
-			n += 1
-	return n
+	return hooks.filter(func(h: GrappleHook) -> bool: return h.active).size()
 
 
 # =========================================================================
@@ -427,8 +426,7 @@ func _try_ground_jump() -> void:
 func _process_wallrun(wish: Vector3, delta: float) -> void:
 	_wallrun_t += delta
 	var n := _wall_normal
-	var horiz := Vector3(velocity.x, 0.0, velocity.z)
-	var along := horiz - n * horiz.dot(n)
+	var along := Vector3(velocity.x, 0.0, velocity.z).slide(n)
 	var speed := maxf(along.length(), wallrun_min_speed)
 	if Input.is_action_pressed("sprint"):
 		speed = move_toward(speed, maxf(speed, sprint_speed), 20.0 * delta)
@@ -474,9 +472,7 @@ func _check_wallrun_start(wish: Vector3) -> void:
 	var n := get_wall_normal()
 	if absf(n.y) > 0.3:
 		return
-	var horiz := Vector3(velocity.x, 0.0, velocity.z)
-	var along := horiz - n * horiz.dot(n)
-	if along.length() < wallrun_min_speed:
+	if Vector3(velocity.x, 0.0, velocity.z).slide(n).length() < wallrun_min_speed:
 		return
 	_wall_normal = n
 	_wallrun_t = 0.0
@@ -576,11 +572,7 @@ func _release_combat_hooks() -> void:
 
 
 func rope_hooks_out() -> int:
-	var n := 0
-	for h in hooks:
-		if h.active and not h.combat:
-			n += 1
-	return n
+	return hooks.filter(func(h: GrappleHook) -> bool: return h.active and not h.combat).size()
 
 
 func combat_hook() -> GrappleHook:
@@ -592,25 +584,28 @@ func combat_hook() -> GrappleHook:
 
 ## Naechste freie Huefte, abwechselnd links/rechts.
 func _take_free_hip() -> GrappleHook:
-	if _next_hip == null:
-		_next_hip = hook_left
-	var first := _next_hip
-	var second := hook_right if first == hook_left else hook_left
-	for h in [first, second]:
+	var order := [hook_right, hook_left] if _next_hip == hook_right else [hook_left, hook_right]
+	for h: GrappleHook in order:
 		if not h.active:
 			_next_hip = hook_right if h == hook_left else hook_left
 			return h
 	return null
 
 
-func _fire_primary_hook() -> void:
+## Haengt die naechste freie Huefte an den Auto-Aim-Punkt. null = kein Ziel / keine Huefte frei.
+func _attach_aim_hook() -> GrappleHook:
 	if aim_kind == AimKind.NONE:
-		return
+		return null
 	var h := _take_free_hip()
+	if h != null:
+		h.attach(aim_point, aim_target if aim_kind == AimKind.ENEMY else null, global_position)
+	return h
+
+
+func _fire_primary_hook() -> void:
+	var h := _attach_aim_hook()
 	if h == null:
 		return
-	var tgt := aim_target if aim_kind == AimKind.ENEMY else null
-	h.attach(aim_point, aim_normal, tgt, global_position)
 	_primary = h
 	if is_on_floor():
 		velocity.y = maxf(velocity.y, 4.0)
@@ -618,16 +613,12 @@ func _fire_primary_hook() -> void:
 
 
 func _fire_second_hook() -> void:
-	if aim_kind == AimKind.NONE or _primary == null or not _primary.active \
+	if _primary == null or not _primary.active \
 			or (dual_min_separation > 0.0
 				and aim_point.distance_to(_primary.anchor_world()) < dual_min_separation):
 		return  # kein zweites Ziel -> erster Haken bleibt einfach straff
-	var h := _take_free_hip()
-	if h == null:
-		return
-	var tgt := aim_target if aim_kind == AimKind.ENEMY else null
-	h.attach(aim_point, aim_normal, tgt, global_position)
-	_refresh_state()
+	if _attach_aim_hook() != null:
+		_refresh_state()
 
 
 ## Combat-Seil zum Ziel (Hard-Lock oder Auto-Grab). Sind beide Hueften belegt,
@@ -640,7 +631,7 @@ func _fire_combat_hook(target: Node3D) -> bool:
 		h = hook_left if _primary == hook_right else hook_right
 		h.release()
 	var p := _lock_point_of(target)
-	h.attach(p, Vector3.ZERO, target, global_position, true)
+	h.attach(p, target, global_position, true)
 	velocity += (p - global_position).normalized() * combat_pull_impulse
 	if is_on_floor():
 		velocity.y = maxf(velocity.y, 6.0)
@@ -659,26 +650,31 @@ func is_rope_rigid() -> bool:
 			and any_hook_active()
 
 
-## Zugkraft (m/s²) der Winde eines Seils – 0 bei starrem Seil (S).
-func winch_force(h: GrappleHook = null) -> float:
+## Faktor der Winde: Basis bzw. Combat, x Turbo (W) – 0 bei starrem Seil (S).
+func _winch_mult(h: GrappleHook) -> float:
 	if is_rope_rigid():
 		return 0.0
-	var base := reel_force * (combat_reel_mult if h != null and h.combat else reel_base_mult)
-	return base * (reel_turbo_mult if is_turbo() else 1.0)
+	var m := combat_reel_mult if h != null and h.combat else reel_base_mult
+	return m * (reel_turbo_mult if is_turbo() else 1.0)
+
+
+## Zugkraft (m/s²) der Winde eines Seils.
+func winch_force(h: GrappleHook = null) -> float:
+	return reel_force * _winch_mult(h)
+
+
+## Linien-Geschwindigkeit der Winde (m/s): bis hierhin zieht sie.
+func winch_speed(h: GrappleHook = null) -> float:
+	return reel_speed * _winch_mult(h)
+
+
+func _hip_side(h: GrappleHook) -> float:
+	return -HIP_SIDE if h.kind == GrappleHook.Kind.HIP_LEFT else HIP_SIDE
 
 
 ## Huefte, an der das Seil sitzt (Weltposition) – Ursprung der Zugrichtung.
 func hip_position(h: GrappleHook) -> Vector3:
-	var side := -HIP_SIDE if h.kind == GrappleHook.Kind.HIP_LEFT else HIP_SIDE
-	return global_position + Vector3.UP * HIP_UP + Basis(Vector3.UP, _yaw) * Vector3.RIGHT * side
-
-
-## Linien-Geschwindigkeit der Winde (m/s): bis hierhin zieht sie (0 bei starrem Seil).
-func winch_speed(h: GrappleHook = null) -> float:
-	if is_rope_rigid():
-		return 0.0
-	var base := reel_speed * (combat_reel_mult if h != null and h.combat else reel_base_mult)
-	return base * (reel_turbo_mult if is_turbo() else 1.0)
+	return global_position + Vector3.UP * HIP_UP + Basis(Vector3.UP, _yaw) * Vector3.RIGHT * _hip_side(h)
 
 
 func _process_hooked(wish: Vector3, delta: float) -> void:
@@ -708,6 +704,7 @@ func _process_hooked(wish: Vector3, delta: float) -> void:
 ##      nach aussen gerichtete Radial-Geschwindigkeit – tangentialer Schwung bleibt erhalten.
 func _solve_ropes(delta: float) -> void:
 	var rigid := is_rope_rigid()
+	var max_len := grapple_range * lock_keep_range_mult
 	var live: Array[GrappleHook] = []
 	for h in hooks:
 		if h.active and not h.slack and global_position.distance_to(h.pivot()) > 0.01:
@@ -738,7 +735,7 @@ func _solve_ropes(delta: float) -> void:
 		var dist := global_position.distance_to(h.pivot())
 		if not rigid:
 			h.rope_length = minf(h.rope_length, dist)
-		h.rope_length = clampf(h.rope_length, rope_min_length, grapple_range * lock_keep_range_mult)
+		h.rope_length = clampf(h.rope_length, rope_min_length, max_len)
 	# --- 3) Laengen-Constraints (iterativ) ---------------------------------
 	for it in rope_solver_iterations:
 		for h in live:
@@ -756,8 +753,7 @@ func _solve_ropes(delta: float) -> void:
 	if not rigid:
 		var next := global_position + velocity * delta
 		for h in live:
-			h.rope_length = clampf(minf(h.rope_length, next.distance_to(h.pivot())),
-					rope_min_length, grapple_range * lock_keep_range_mult)
+			h.rope_length = clampf(minf(h.rope_length, next.distance_to(h.pivot())), rope_min_length, max_len)
 
 
 ## A / D am Seil: seitlich quer zum Seil ausweichen / schwingen.
@@ -772,8 +768,7 @@ func _rope_steer(delta: float) -> void:
 		if h.active and not h.slack:
 			axis += (h.pivot() - global_position).normalized()
 	if axis.length() > 0.01:
-		axis = axis.normalized()
-		lateral -= axis * lateral.dot(axis)
+		lateral = lateral.slide(axis.normalized())
 	velocity += lateral * rope_steer_accel * delta
 
 
@@ -785,10 +780,9 @@ func _release_rope_hooks() -> void:
 
 
 func _release_all_hooks() -> void:
-	for h in hooks:
-		h.release()
+	_release_rope_hooks()
+	_release_combat_hooks()
 	_grace_t = -1.0
-	_primary = null
 
 
 # =========================================================================
@@ -1153,9 +1147,7 @@ func _respawn() -> void:
 func _process(delta: float) -> void:
 	var look := Input.get_vector("look_left", "look_right", "look_up", "look_down")
 	if look != Vector2.ZERO:
-		_snap_t = -1.0
-		_yaw -= look.x * stick_sensitivity * delta
-		_pitch = clampf(_pitch - look.y * stick_sensitivity * delta, -1.45, 1.35)
+		_turn_camera(look * stick_sensitivity * delta)
 
 	_cam_blend = move_toward(_cam_blend, 1.0 if first_person else 0.0,
 			delta / maxf(camera_switch_time, 0.01))
@@ -1220,7 +1212,7 @@ func lock_view_angles(pivot: Vector3, target: Vector3) -> Vector2:
 		if flat < 0.3:
 			return Vector2.INF
 		yaw = atan2(-v.x, -v.z)
-		pitch = clampf(atan2(v.y, flat), -1.45, 1.35)
+		pitch = clampf(atan2(v.y, flat), PITCH_MIN, PITCH_MAX)
 	return Vector2(yaw, pitch)
 
 
@@ -1281,31 +1273,31 @@ func _update_ropes(origin: Vector3, b: float) -> void:
 	for h in hooks:
 		if not h.active:
 			continue
-		var side := -HIP_SIDE if h.kind == GrappleHook.Kind.HIP_LEFT else HIP_SIDE
-		var color := Color(0.55, 0.95, 1.0)
-		if h.combat:
-			color = Color(1.0, 0.45, 0.25)
-		elif h.slack:
-			color = Color(0.55, 0.95, 1.0) * 0.5
-		elif is_turbo():
-			color = Color(1.0, 0.8, 0.3)
-		var hand := origin + Vector3.UP * hip_up + right * side
-		var pts := h.render_points(hand)
+		var color := _rope_color(h)
+		var pts := h.render_points(origin + Vector3.UP * hip_up + right * _hip_side(h))
 		for i in pts.size() - 1:
-			if n >= MAX_ROPE_SEGMENTS:
-				break
-			var a := pts[i]
-			var seg := pts[i + 1] - a
-			var length := seg.length()
-			if length < 0.01:
+			var seg := pts[i + 1] - pts[i]
+			if n >= MAX_ROPE_SEGMENTS or seg.length() < 0.01:
 				continue
-			var y_axis := seg / length
-			var x_axis := y_axis.cross(Vector3.UP)
-			if x_axis.length() < 0.01:
-				x_axis = y_axis.cross(Vector3.RIGHT)
-			x_axis = x_axis.normalized()
-			var z_axis := x_axis.cross(y_axis)
-			_rope_mm.set_instance_transform(n, Transform3D(Basis(x_axis, y_axis * length, z_axis), a + seg * 0.5))
+			_rope_mm.set_instance_transform(n, _segment_transform(pts[i], seg))
 			_rope_mm.set_instance_color(n, color)
 			n += 1
 	_rope_mm.visible_instance_count = n
+
+
+func _rope_color(h: GrappleHook) -> Color:
+	if h.combat:
+		return ROPE_COLOR_COMBAT
+	if h.slack:
+		return ROPE_COLOR * 0.5
+	return ROPE_COLOR_TURBO if is_turbo() else ROPE_COLOR
+
+
+## Einheits-Zylinder (Hoehe 1, entlang Y) von `from` ueber das Segment `seg` strecken.
+func _segment_transform(from: Vector3, seg: Vector3) -> Transform3D:
+	var y_axis := seg.normalized()
+	var x_axis := y_axis.cross(Vector3.UP)
+	if x_axis.length() < 0.01:
+		x_axis = y_axis.cross(Vector3.RIGHT)
+	x_axis = x_axis.normalized()
+	return Transform3D(Basis(x_axis, seg, x_axis.cross(y_axis)), from + seg * 0.5)
