@@ -43,8 +43,8 @@ func _ready() -> void:
 	_hooks.position.y -= 90
 
 	var help := _make_label(
-			"WASD Laufen | Shift Sprint | Space Sprung | P Kamera | RMB halten Seil (Doppel-Tap = 2. Haken, auf Gegner = Rail)\n"
-			+ "Am Seil: W Turbo, S starres Seil, A/D seitlich | LMB halten = Gegner unterm Fadenkreuz greifen, "
+			"WASD Laufen | Shift Sprint | Space Sprung | P Kamera | RMB halten Seil (Doppel-Tap = 2. Haken)\n"
+			+ "Am Seil: W Turbo, S starres Seil, A/D seitlich | LMB halten = Gegner greifen (Doppelklick = 2 Seile), "
 			+ "loslassen = Schlag\nMausrad-Klick Ziel waehlen + Kamera-Snap (halten = loesen), "
 			+ "Mausrad Trefferpunkt-Wechsel | R Reset", 14)
 	help.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
@@ -80,8 +80,8 @@ func _process(_delta: float) -> void:
 		extra = "   TURBO"
 	elif g.is_rope_rigid():
 		extra = "   STARR"
-	if g.is_rail_locked():
-		extra += "   RAIL"
+	if g.is_dual_locked():
+		extra += "   DOPPEL"
 	elif g.combat_hook():
 		extra += "   ANGRIFF"
 

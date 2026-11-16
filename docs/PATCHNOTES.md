@@ -4,19 +4,24 @@ Neueste Einträge immer oben.
 
 ## Unreleased
 
-### 2026-11-16 – Gegner-Anflug: Momentum-Umlenkung + Rail-Lock mit zwei Seilen
-- **Abfangen beim Anheften an einen Gegner:** Der Schwung wird per `slerp` Richtung Ziel gedreht, der Betrag
-  bleibt erhalten (kein Abbremsen auf 0). Ein Seil: 25 %, zwei Seile: 70 % (`single_intercept` / `rail_intercept`).
-- **Ein Seil am Gegner (organisch):** Sanftes Nachlenken (`single_steer_rate` 3/s), Schwerkraft und A/D wirken
-  weiter – weite, variable Anflugkurven und Umkreisen bleiben möglich.
-- **Zwei Seile am selben Gegner = Rail** (RMB-Doppel-Tap auf den Gegner oder RMB-Seil + LMB-Combat-Seil):
-  hartes Ausrichten (`rail_steer_rate` 12/s), keine Schwerkraft, kein seitlicher Drift, beide Winden ziehen mit
-  Combat-Stärke Richtung Mitte beider Anker. HUD zeigt `RAIL`. LMB im Rail hängt das Combat-Seil an denselben
-  Gegner, der Rail bleibt; Loslassen = Schlag.
-- RMB auf einen Gegner-Körper ohne eigenen Lock-Punkt (Riese) merkt sich den Gegner als Seil-Ziel.
-- Messwerte im Smoke-Test (Quer-Flug 21 m/s neben einem Dummy): ein Seil 4,8 m Abweichung / 3,3 m Durchsacken,
-  Rail 0,6 m / 0,1 m, beide treffen. Nebeneffekt: Der Free-Flow-Sturzflug zielt direkter auf den Lock-Punkt,
-  dadurch etwas weniger Plunge (Test: 161 statt 210 Schaden).
+### 2026-11-16 – Gegner-Anflug: Carving statt Rail-Snap, Doppelklick = doppelte Kraft
+Ersetzt den unveröffentlichten Rail-Lock (kein sofortiges Umlenken beim Anheften, kein Einrasten auf eine Linie).
+- **Carving:** Am Gegner dreht eine Lenk-Drehrate (`carve_turn_rate` 3,5 rad/s pro Seil, `Vector3.rotated`) die
+  vorhandene Geschwindigkeit zum Ziel. Der Betrag bleibt exakt erhalten, die Flugkurve biegt sich stetig ein
+  (Zentripetal-Beschleunigung = Rate × Tempo, Wenderadius = Tempo / Rate).
+- **Schwerkraft am Gegner** wirkt nur noch entlang der Zielrichtung, wenn das Ziel unten liegt: Sturzflüge
+  beschleunigen weiter, Durchsacken unter die Anflugbahn entfällt.
+- **Ein Seil:** einfache Lenk- und Zugkraft, weiter Bogen, A/D bleibt aktiv.
+- **Zwei Seile am selben Gegner** (LMB-Doppelklick + halten, RMB-Doppel-Tap oder RMB + LMB): doppelte Lenkrate
+  und doppelte Zugkraft (beide Winden mit Combat-Stärke) → etwa halber Wenderadius. HUD zeigt `DOPPEL`.
+- **LMB-Doppelklick:** Ein kurzer Klick (< `double_tap_window`) schlägt nicht sofort, das Seil zieht weiter; ein
+  zweiter Klick im Fenster hängt das zweite Combat-Seil an dasselbe Ziel. Ohne zweiten Klick folgt der Schlag am
+  Fensterende (max. 0,2 s später). Halten + Loslassen schlägt wie bisher sofort.
+- Der Dash-Kick (`combat_pull_impulse`) kommt nur vom ersten Combat-Seil; ein Combat-Seil verdrängt nie ein anderes
+  Combat-Seil. RMB auf einen Gegner-Körper ohne eigenen Lock-Punkt (Riese) merkt sich den Gegner als Seil-Ziel.
+- Smoke-Test (22 m/s tangential an einem Dummy vorbei): ein Seil Radius 5,2 m / Zug 142 m/s², zwei Seile
+  3,3 m / 258 m/s², Tempo 100 % erhalten, kein Durchsacken, beide treffen. Free-Flow-Sturzflug: 157 statt 210
+  Schaden (zielt direkter auf den Lock-Punkt).
 
 ### 2026-11-16 – Code entschlackt (CLAUDE.md-Prinzip)
 Kein Gameplay-Unterschied: Smoke-Test liefert dieselben Messwerte wie vorher.
