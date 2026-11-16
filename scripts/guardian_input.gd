@@ -7,6 +7,7 @@ extends RefCounted
 ## Layout:
 ##   LMB / X ............ attack        (Jagdmesser-Slash)
 ##   RMB / LT ........... grapple       (straffes Seil, halten; Doppel-Tap = 2. Haken)
+##                        Doppel-Tap auf einen Gegner = Rail (gerader Anflug)
 ##   W / S am Seil ...... Winde: W = Turbo-Einzug, S = starres Seil (A/D = seitlich)
 ##   Mausrad-Klick / R3 . hard_lock     (Ziel waehlen + Kamera-Snap-Impuls, halten = loesen)
 ##   Mausrad / D-Pad L-R  lock_next / lock_prev (Trefferpunkt-/Ziel-Wechsel)

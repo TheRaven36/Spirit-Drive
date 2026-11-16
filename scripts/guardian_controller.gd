@@ -26,6 +26,10 @@ extends CharacterBody3D
 ##             Reichweite grau, kein Seil), danach wird sie automatisch geloescht.
 ##             LMB halten = Seil zum gewaehlten Punkt, loslassen = Schlag.
 ##           Ganz nah am Ziel (< auto_grab_min_dist) schlaegt LMB direkt zu.
+## Gegner-Anflug: Beim Anheften an einen Gegner wird der Schwung zum Ziel umgelenkt
+##           (Betrag bleibt). Ein Seil = organische Kurve (sanftes Nachlenken, Schwerkraft
+##           wirkt). Beide Seile am selben Gegner (RMB-Doppel-Tap bzw. RMB + LMB) = Rail:
+##           harte Ausrichtung, keine Schwerkraft, kein seitlicher Drift – gerader Anflug.
 ## Kamera:   P = Third-/First-Person, nahtlos ueberblendet.
 ##
 ## Physik in _physics_process, Kamera/Visuals in _process ueber die
@@ -104,6 +108,15 @@ enum AimKind { NONE, POINT, ENEMY }
 @export var momentum_memory := 0.12
 ## Unter dieser Distanz zum Ziel feuert LMB kein Seil, sondern schlaegt direkt (Messer-Reichweite).
 @export var auto_grab_min_dist := 4.5
+
+# --- Gegner-Anflug: ein Seil (organisch) vs. zwei Seile (Rail) ---------
+@export_group("Enemy Dash")
+## Anteil (0..1), um den der Schwung beim Anheften Richtung Gegner gedreht wird.
+@export var single_intercept := 0.25
+@export var rail_intercept := 0.7
+## Nachlenken pro Sekunde (1/s) waehrend des Anflugs – Betrag der Geschwindigkeit bleibt.
+@export var single_steer_rate := 3.0
+@export var rail_steer_rate := 12.0
 
 # --- Free-Flow Auto-Grab (LMB ohne Hard-Lock) ------------------------------
 @export_group("Auto Grab")
@@ -594,8 +607,13 @@ func _attach_aim_hook() -> GrappleHook:
 	if aim_kind == AimKind.NONE:
 		return null
 	var h := _take_free_hip()
-	if h != null:
-		h.attach(aim_point, aim_target if aim_kind == AimKind.ENEMY else null, global_position)
+	if h == null:
+		return null
+	var tgt: Node3D = aim_target if aim_kind == AimKind.ENEMY else null
+	if tgt == null and aim_collider is Node3D and hit_receiver_of(aim_collider) != null:
+		tgt = aim_collider  # Gegner-Koerper (z. B. Riese): Seil haengt am Gegner
+	h.attach(aim_point, tgt, global_position)
+	_intercept_momentum()
 	return h
 
 
@@ -631,6 +649,7 @@ func _fire_combat_hook(target: Node3D) -> bool:
 		h = hook_left if _primary == hook_right else hook_right
 		h.release()
 	h.attach(p, target, global_position, true)
+	_intercept_momentum()
 	velocity += (p - global_position).normalized() * combat_pull_impulse
 	if is_on_floor():
 		velocity.y = maxf(velocity.y, 6.0)
@@ -653,7 +672,7 @@ func is_rope_rigid() -> bool:
 func _winch_mult(h: GrappleHook) -> float:
 	if is_rope_rigid():
 		return 0.0
-	var m := combat_reel_mult if h != null and h.combat else reel_base_mult
+	var m := combat_reel_mult if (h != null and h.combat) or is_rail_locked() else reel_base_mult
 	return m * (reel_turbo_mult if is_turbo() else 1.0)
 
 
@@ -683,8 +702,11 @@ func _process_hooked(wish: Vector3, delta: float) -> void:
 		if h.active:
 			h.update_bends(space, global_position, velocity, ex, grapple_mask)
 
-	velocity.y -= gravity * delta
-	_rope_steer(delta)
+	var rail := is_rail_locked()
+	if not rail:
+		velocity.y -= gravity * delta  # Rail traegt den Spieler – kein Durchsacken
+		_rope_steer(delta)
+	_steer_to_enemy(rail_steer_rate if rail else single_steer_rate, delta)
 	if is_on_floor():
 		_try_ground_jump()
 	_solve_ropes(delta)
@@ -753,6 +775,46 @@ func _solve_ropes(delta: float) -> void:
 		var next := global_position + velocity * delta
 		for h in live:
 			h.rope_length = clampf(minf(h.rope_length, next.distance_to(h.pivot())), rope_min_length, max_len)
+
+
+## Gegner, an dem ein straffes Seil haengt (Schadens-Empfaenger), sonst null.
+func _enemy_of(h: GrappleHook) -> Node:
+	if not h.active or h.slack or not is_instance_valid(h.target):
+		return null
+	return hit_receiver_of(h.target)
+
+
+## Rail: beide Seile straff am selben Gegner.
+func is_rail_locked() -> bool:
+	var e := _enemy_of(hook_left)
+	return e != null and e == _enemy_of(hook_right)
+
+
+## Anflugpunkt: Rail = Mitte beider Pivots (symmetrischer Zug), ein Seil = dessen Pivot.
+## Vector3.INF = kein Gegner-Anflug (kein Seil am Gegner oder zwei verschiedene Gegner).
+func enemy_goal() -> Vector3:
+	if is_rail_locked():
+		return (hook_left.pivot() + hook_right.pivot()) * 0.5
+	var on_enemy := hooks.filter(func(h: GrappleHook) -> bool: return _enemy_of(h) != null)
+	return on_enemy[0].pivot() if on_enemy.size() == 1 else Vector3.INF
+
+
+## Abfangen beim Anheften: Schwung sofort teilweise Richtung Gegner drehen (nicht nullen).
+func _intercept_momentum() -> void:
+	_redirect_velocity(enemy_goal(), rail_intercept if is_rail_locked() else single_intercept)
+
+
+func _steer_to_enemy(rate: float, delta: float) -> void:
+	_redirect_velocity(enemy_goal(), 1.0 - exp(-rate * delta))
+
+
+## Dreht die Geschwindigkeit um `amount` (0..1) Richtung `goal`, der Betrag bleibt erhalten.
+## Innerhalb von hang_length nicht mehr – dort uebernimmt der Aufprall/Schlag.
+func _redirect_velocity(goal: Vector3, amount: float) -> void:
+	if goal == Vector3.INF or global_position.distance_to(goal) <= hang_length:
+		return
+	var dir := global_position.direction_to(goal)
+	velocity = velocity.slerp(dir * velocity.length(), amount)
 
 
 ## A / D am Seil: seitlich quer zum Seil ausweichen / schwingen.

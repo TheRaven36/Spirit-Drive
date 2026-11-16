@@ -4,6 +4,20 @@ Neueste Einträge immer oben.
 
 ## Unreleased
 
+### 2026-11-16 – Gegner-Anflug: Momentum-Umlenkung + Rail-Lock mit zwei Seilen
+- **Abfangen beim Anheften an einen Gegner:** Der Schwung wird per `slerp` Richtung Ziel gedreht, der Betrag
+  bleibt erhalten (kein Abbremsen auf 0). Ein Seil: 25 %, zwei Seile: 70 % (`single_intercept` / `rail_intercept`).
+- **Ein Seil am Gegner (organisch):** Sanftes Nachlenken (`single_steer_rate` 3/s), Schwerkraft und A/D wirken
+  weiter – weite, variable Anflugkurven und Umkreisen bleiben möglich.
+- **Zwei Seile am selben Gegner = Rail** (RMB-Doppel-Tap auf den Gegner oder RMB-Seil + LMB-Combat-Seil):
+  hartes Ausrichten (`rail_steer_rate` 12/s), keine Schwerkraft, kein seitlicher Drift, beide Winden ziehen mit
+  Combat-Stärke Richtung Mitte beider Anker. HUD zeigt `RAIL`. LMB im Rail hängt das Combat-Seil an denselben
+  Gegner, der Rail bleibt; Loslassen = Schlag.
+- RMB auf einen Gegner-Körper ohne eigenen Lock-Punkt (Riese) merkt sich den Gegner als Seil-Ziel.
+- Messwerte im Smoke-Test (Quer-Flug 21 m/s neben einem Dummy): ein Seil 4,8 m Abweichung / 3,3 m Durchsacken,
+  Rail 0,6 m / 0,1 m, beide treffen. Nebeneffekt: Der Free-Flow-Sturzflug zielt direkter auf den Lock-Punkt,
+  dadurch etwas weniger Plunge (Test: 161 statt 210 Schaden).
+
 ### 2026-11-16 – Code entschlackt (CLAUDE.md-Prinzip)
 Kein Gameplay-Unterschied: Smoke-Test liefert dieselben Messwerte wie vorher.
 - **Movement:** Seil-Zähler über `Array.any/filter`, Hüften-/Winden-/Kamera-Logik je einmal statt doppelt,

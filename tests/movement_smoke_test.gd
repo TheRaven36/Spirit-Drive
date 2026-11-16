@@ -37,6 +37,8 @@ func _run() -> void:
 	await _test_hitbox_alignment()
 	await _test_auto_grab_free_flow()
 	await _test_auto_grab_hold()
+	await _test_enemy_dash_single_vs_rail()
+	await _test_rail_double_tap()
 	await _test_hard_lock_camera()
 	await _test_hard_lock_out_of_range()
 	await _test_free_camera_while_swinging()
@@ -646,6 +648,89 @@ func _test_auto_grab_hold() -> void:
 	_check(ch != null and ch.target == d, "Ziel kommt ins Fadenkreuz -> Seil greift sofort")
 	Input.action_release("attack")
 	await _frames(40)
+
+
+func _test_enemy_dash_single_vs_rail() -> void:
+	print("Gegner-Anflug: ein Seil (organisch) vs. zwei Seile (Rail)")
+	var single := await _enemy_dash(false)
+	var rail := await _enemy_dash(true)
+	print("    ein Seil: Abweichung %.1f m, Durchsacken %.1f m, Treffer %s nach %d Frames"
+			% [single.dev, single.drop, single.reached, single.frames])
+	print("    Rail:     Abweichung %.1f m, Durchsacken %.1f m, Treffer %s nach %d Frames"
+			% [rail.dev, rail.drop, rail.reached, rail.frames])
+	_check(not single.rail and rail.rail, "Rail nur mit zwei Seilen am selben Gegner")
+	_check(single.speed_kept > 0.9 and rail.speed_kept > 0.9,
+			"Abfangen nullt den Schwung nicht (%.0f %% / %.0f %% Tempo erhalten)"
+			% [single.speed_kept * 100.0, rail.speed_kept * 100.0])
+	_check(rail.angle0 < single.angle0, "Rail dreht den Schwung beim Anheften staerker zum Ziel (%.0f° vs %.0f°)"
+			% [rail.angle0, single.angle0])
+	_check(single.reached, "ein Seil trifft trotzdem sicher (nur ueber eine Kurve)")
+	_check(single.dev > rail.dev * 2.0, "ein Seil = weitere, organische Kurve")
+	_check(rail.reached and rail.dev < 2.0 and rail.drop < 1.0,
+			"Rail = gerader Anflug ohne Durchsacken bis ins Ziel")
+	_check(rail.reached and rail.frames <= single.frames, "Rail kommt mindestens so schnell an")
+
+
+## Schneller Seitwaerts-Flug neben einem schwebenden Dummy, dann Seil(e) zum Gegner.
+## Misst Abweichung von der Geraden Start->Ziel, Durchsacken unter die Linie und
+## die Frames bis in Messer-Reichweite.
+func _enemy_dash(rail: bool) -> Dictionary:
+	var d := _dummy_near(Vector3(0, 18, -60))
+	await _place(Vector3(14, 18, -48), 0.0, 0.0)
+	var goal := d.get_lock_point()
+	var start := g.global_position
+	var line := start.direction_to(goal)
+	g.velocity = Vector3(12, 0, -14).normalized() * 20.0 + Vector3.DOWN * 5.0  # quer + fallend
+	var speed0 := g.velocity.length()
+	if rail:
+		g.hook_right.attach(goal, d, start)  # erstes Seil (wie RMB auf den Gegner)
+	g._fire_combat_hook(d)
+	var res := {"rail": g.is_rail_locked(), "speed_kept": g.velocity.length() / speed0,
+			"angle0": rad_to_deg(g.velocity.angle_to(start.direction_to(goal))),
+			"dev": 0.0, "drop": 0.0, "reached": false, "frames": 0}
+	for i in 120:
+		await physics_frame
+		var rel := g.global_position - start
+		var on_line := start + line * rel.dot(line)
+		res.dev = maxf(res.dev, g.global_position.distance_to(on_line))
+		res.drop = maxf(res.drop, on_line.y - g.global_position.y)
+		res.frames = i + 1
+		if g.global_position.distance_to(goal) < g.knife.lock_strike_reach:  # Schlag trifft
+			res.reached = true
+			break
+	g._release_all_hooks()
+	_revive(d)
+	return res
+
+
+func _test_rail_double_tap() -> void:
+	print("Rail per RMB-Doppel-Tap auf den Gegner")
+	var d := _dummy_near(Vector3(0, 18, -60))
+	await _place(Vector3(14, 18, -48), 0.0, 0.0)
+	_aim_at(d.get_lock_point())
+	await _process_frames(2)
+	await _frames(2)
+	await _tap("grapple")
+	await _frames(2)  # Loslassen registrieren -> Doppel-Tap-Fenster laeuft
+	_check(g.hooks_out() == 1 and not g.is_rail_locked(), "erster Tap: ein Seil am Gegner, noch kein Rail")
+	_aim_at(d.get_lock_point())
+	await _process_frames(1)
+	Input.action_press("grapple")
+	await _frames(2)
+	_check(g.hooks_out() == 2 and g.is_rail_locked(), "Doppel-Tap: beide Seile am Gegner = Rail")
+	var y0 := g.global_position.y
+	await _frames(15)
+	_check(g.global_position.y > y0 - 0.5, "Rail haelt die Hoehe (kein Durchsacken)")
+	Input.action_press("attack")
+	await _frames(2)
+	_check(g.combat_hook() != null and g.is_rail_locked(), "LMB im Rail: Combat-Seil am selben Gegner, Rail bleibt")
+	Input.action_release("attack")
+	await _frames(2)
+	_check(g.combat_hook() == null and g.knife.is_attacking(), "LMB loslassen = Schlag")
+	Input.action_release("grapple")
+	g._release_all_hooks()
+	_revive(d)
+	await _frames(5)
 
 
 func _test_hard_lock_camera() -> void:
