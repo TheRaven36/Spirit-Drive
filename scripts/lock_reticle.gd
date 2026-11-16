@@ -8,13 +8,13 @@ const COL_IN_RANGE := Color(1.0, 0.55, 0.2, 0.95)
 const COL_OUT_OF_RANGE := Color(0.62, 0.62, 0.62, 0.55)
 const MIN_RADIUS := 18.0
 const MAX_RADIUS := 150.0
+const LINE_WIDTH := 2.5
 
 ## Bildschirm-Mitte des Rahmens (Viewport-Koordinaten).
 var center := Vector2.ZERO
 ## Halbe Kantenlaenge des Rahmens in Pixeln.
 var radius := 30.0
 var in_range := true
-var line_width := 2.5
 
 
 func _ready() -> void:
@@ -42,7 +42,7 @@ func _draw() -> void:
 	for sx: float in [-1.0, 1.0]:
 		for sy: float in [-1.0, 1.0]:
 			var corner := center + Vector2(sx * r, sy * r)
-			draw_line(corner, corner - Vector2(sx * arm, 0.0), col, line_width, true)
-			draw_line(corner, corner - Vector2(0.0, sy * arm), col, line_width, true)
+			draw_line(corner, corner - Vector2(sx * arm, 0.0), col, LINE_WIDTH, true)
+			draw_line(corner, corner - Vector2(0.0, sy * arm), col, LINE_WIDTH, true)
 	# Mittelpunkt = exakter Lock-Punkt
 	draw_circle(center, 2.0, col)

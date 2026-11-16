@@ -116,9 +116,10 @@ func _dot(on: bool) -> String:
 func _hit_text(h: Dictionary) -> String:
 	if h.is_empty():
 		return "-"
-	var t := "%d  (Speed x%.1f" % [h.damage, h.speed_mult]
+	var t := "%d" % h.damage
 	if h.get("point", "") != "":
-		t = "%d @ %s  (Speed x%.1f" % [h.damage, h.point, h.speed_mult]
+		t += " @ %s" % h.point
+	t += "  (Speed x%.1f" % h.speed_mult
 	if h.is_plunge:
 		t += ", PLUNGE x%.1f" % h.plunge_mult
 	return t + ")"

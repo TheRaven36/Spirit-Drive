@@ -194,7 +194,6 @@ var hook_left := GrappleHook.new(GrappleHook.Kind.HIP_LEFT)
 var hook_right := GrappleHook.new(GrappleHook.Kind.HIP_RIGHT)
 var hooks: Array[GrappleHook] = [hook_left, hook_right]
 
-var aim_normal := Vector3.ZERO
 ## Bester Lock-Kandidat im Kegel um das Fadenkreuz (unsichtbar).
 var lock_target: Node3D = null
 ## Eingerasteter Hard-Lock (Mausrad-Klick / R3). Bleibt bis zum Loesen bestehen –
@@ -534,14 +533,12 @@ func _handle_attack_input() -> void:
 
 ## Ziel, das LMB gerade greifen wuerde (Hard-Lock hat Vorrang). null = nichts greifbar.
 func combat_grab_target() -> Node3D:
-	var t: Node3D = null
+	var t := auto_grab_target
 	if hard_lock != null:
-		if not is_instance_valid(hard_lock) or not hard_lock_in_range():
+		if not hard_lock_in_range():
 			return null
 		t = hard_lock
-	else:
-		t = auto_grab_target
-	if t == null or not is_instance_valid(t):
+	if not is_instance_valid(t):
 		return null
 	var d := global_position.distance_to(_lock_point_of(t))
 	if d < auto_grab_min_dist or d > grapple_range:
@@ -551,11 +548,11 @@ func combat_grab_target() -> Node3D:
 
 ## Ziel fuer einen direkten Schlag ohne Seil (Lock oder Auto-Ziel in Messer-Naehe).
 func _strike_target() -> Node3D:
-	var t: Node3D = hard_lock if is_instance_valid(hard_lock) else auto_grab_target
-	if t != null and is_instance_valid(t) \
-			and global_position.distance_to(_lock_point_of(t)) <= knife.lock_strike_reach:
+	var locked: Node3D = hard_lock if is_hard_locked() else null
+	var t: Node3D = locked if locked != null else auto_grab_target
+	if is_instance_valid(t) and global_position.distance_to(_lock_point_of(t)) <= knife.lock_strike_reach:
 		return t
-	return hard_lock if is_instance_valid(hard_lock) else null
+	return locked
 
 
 func _try_combat_grab() -> bool:
@@ -624,13 +621,15 @@ func _fire_second_hook() -> void:
 ## Combat-Seil zum Ziel (Hard-Lock oder Auto-Grab). Sind beide Hueften belegt,
 ## wird das aeltere RMB-Seil dafuer eingeholt.
 func _fire_combat_hook(target: Node3D) -> bool:
-	if not is_instance_valid(target) or global_position.distance_to(_lock_point_of(target)) > grapple_range:
+	if not is_instance_valid(target):
+		return false
+	var p := _lock_point_of(target)
+	if global_position.distance_to(p) > grapple_range:
 		return false
 	var h := _take_free_hip()
 	if h == null:
 		h = hook_left if _primary == hook_right else hook_right
 		h.release()
-	var p := _lock_point_of(target)
 	h.attach(p, target, global_position, true)
 	velocity += (p - global_position).normalized() * combat_pull_impulse
 	if is_on_floor():
@@ -805,14 +804,12 @@ func _update_auto_grab() -> void:
 	var start := _aim_start()
 	if aim_collider != null and aim_kind == AimKind.POINT:
 		var best_d := INF
-		for n in get_tree().get_nodes_in_group("lock_target"):
-			var t := n as Node3D
-			if t == null or not _is_lockable(t) or hit_receiver_of(t) != aim_collider:
+		for t in _lockables_within(grapple_range):
+			if hit_receiver_of(t) != aim_collider:
 				continue
 			var p := _lock_point_of(t)
 			var dd := p.distance_to(aim_hit_pos)
-			if dd < best_d and global_position.distance_to(p) <= grapple_range \
-					and _has_line_of_sight(space, start, t, p):
+			if dd < best_d and _has_line_of_sight(space, start, t, p):
 				best_d = dd
 				auto_grab_target = t
 		if auto_grab_target != null:
@@ -822,7 +819,8 @@ func _update_auto_grab() -> void:
 			auto_grab_cone_deg + speed_bonus, auto_grab_radius)
 
 
-## Startpunkt der Ziel-Strahlen: auf Spielerhoehe entlang des Kamera-Strahls.
+## Startpunkt der Ziel-Strahlen: auf Spielerhoehe entlang des Kamera-Strahls ->
+## in Third-Person wird nichts zwischen Kamera und Spieler getroffen. In First-Person ~ Kamera.
 func _aim_start() -> Vector3:
 	var cam_pos := camera.global_position
 	var fwd := aim_forward()
@@ -834,11 +832,8 @@ func _update_aim_point() -> void:
 	aim_target = null
 	aim_assisted = false
 	aim_collider = null
-	var cam_pos := camera.global_position
 	var fwd := aim_forward()
-	# Startpunkt auf Spielerhoehe entlang des Kamera-Strahls -> in Third-Person
-	# wird nichts zwischen Kamera und Spieler getroffen. In First-Person ~ Kamera.
-	var start := cam_pos + fwd * maxf((global_position - cam_pos).dot(fwd), 0.0)
+	var start := _aim_start()
 	var space := get_world_3d().direct_space_state
 
 	# 1) Lock-Kandidat: Gegner im Kegel, Fang-Radius = max(assist_radius, Distanz * tan(Kegel))
@@ -888,11 +883,9 @@ func _set_aim_from_hit(hit: Dictionary, assisted: bool) -> void:
 		aim_kind = AimKind.ENEMY
 		aim_target = col as Node3D
 		aim_point = _lock_point_of(aim_target)
-		aim_normal = Vector3.ZERO
 	else:
 		aim_kind = AimKind.POINT
-		aim_normal = hit.normal
-		aim_point = (hit.position as Vector3) + aim_normal * 0.05
+		aim_point = (hit.position as Vector3) + (hit.normal as Vector3) * 0.05
 	aim_assisted = assisted
 
 
@@ -901,13 +894,8 @@ func _find_lock_target(space: PhysicsDirectSpaceState3D, start: Vector3, fwd: Ve
 	var best: Node3D = null
 	var best_score := INF
 	var tan_cone := tan(deg_to_rad(cone_deg))
-	for n in get_tree().get_nodes_in_group("lock_target"):
-		var t := n as Node3D
-		if t == null or not _is_lockable(t):
-			continue
+	for t in _lockables_within(max_range):
 		var p := _lock_point_of(t)
-		if global_position.distance_to(p) > max_range:
-			continue
 		var v := p - start
 		var along := v.dot(fwd)
 		if along <= 0.0:
@@ -926,6 +914,16 @@ func _find_lock_target(space: PhysicsDirectSpaceState3D, start: Vector3, fwd: Ve
 	return best
 
 
+## Alle anvisierbaren Ziele (Gruppe "lock_target"), deren Lock-Punkt hoechstens max_range entfernt ist.
+func _lockables_within(max_range: float) -> Array[Node3D]:
+	var out: Array[Node3D] = []
+	for n in get_tree().get_nodes_in_group("lock_target"):
+		var t := n as Node3D
+		if t != null and _is_lockable(t) and global_position.distance_to(_lock_point_of(t)) <= max_range:
+			out.append(t)
+	return out
+
+
 ## Ziel-Punkt eines Lock-Ziels: eigener Lock-Punkt (Koerperteil/Hitbox) oder
 ## Mitte seiner Kollisions-Shapes – nie ein versetzter Mesh-Origin.
 func _lock_point_of(t: Node3D) -> Vector3:
@@ -939,13 +937,13 @@ func lock_radius_of(t: Node3D) -> float:
 
 ## Mittelpunkt der direkten CollisionShape3D-Kinder (Fallback: eigene Position).
 static func hitbox_center(n: Node3D) -> Vector3:
+	var parts := KnifeCombat.body_parts(n)
+	if parts.is_empty():
+		return n.global_position
 	var sum := Vector3.ZERO
-	var count := 0
-	for c in n.get_children():
-		if c is CollisionShape3D and not (c as CollisionShape3D).disabled:
-			sum += (c as Node3D).global_position
-			count += 1
-	return sum / count if count > 0 else n.global_position
+	for c in parts:
+		sum += c.global_position
+	return sum / parts.size()
 
 
 func _is_lockable(t: Object) -> bool:
@@ -968,19 +966,6 @@ func press_target_button() -> void:
 		hard_lock = t
 		_cycle_order.clear()
 	snap_camera_to_target()
-
-
-## Alter Toggle (Tests/Debug): waehlt bzw. loest die Auswahl ohne Snap.
-func toggle_hard_lock() -> void:
-	if hard_lock != null:
-		release_hard_lock()
-	else:
-		var t := lock_target
-		if t == null:
-			t = _find_lock_target(get_world_3d().direct_space_state, _aim_start(), aim_forward(),
-					lock_acquire_range, assist_cone_deg, assist_radius)
-		hard_lock = t
-		_cycle_order.clear()
 
 
 ## Kamera-Snap-Impuls: richtet die Kamera in snap_duration weich auf das gewaehlte Ziel.
@@ -1067,17 +1052,10 @@ func lock_candidates() -> Array[Node3D]:
 	var start := _aim_start()
 	var space := get_world_3d().direct_space_state
 	var scored: Array = []
-	for n in get_tree().get_nodes_in_group("lock_target"):
-		var t := n as Node3D
-		if t == null or not _is_lockable(t):
-			continue
+	for t in _lockables_within(lock_acquire_range):
 		var p := _lock_point_of(t)
-		if global_position.distance_to(p) > lock_acquire_range:
-			continue
 		var v := p - start
-		if v.dot(fwd) <= 0.0:
-			continue
-		if not _has_line_of_sight(space, start, t, p):
+		if v.dot(fwd) <= 0.0 or not _has_line_of_sight(space, start, t, p):
 			continue
 		scored.append([fwd.angle_to(v.normalized()), t])
 	scored.sort_custom(func(a, b): return a[0] < b[0])

@@ -164,17 +164,15 @@ func _start_slash() -> void:
 		combo_index = 0
 	phase = Phase.WINDUP
 	_t = 0.0
+	_path.clear()
 	if _guardian:
 		_swing_velocity = _guardian.momentum_velocity()
 		_swing_turbo = _guardian.is_turbo()
 		_prev_pos = _guardian.global_position
-	var spd := _swing_velocity.length()
-	_active_time = slash_active + minf(spd * speed_active_per_mps, speed_active_max)
+		_path.append(_prev_pos)
+	_active_time = slash_active + minf(_swing_velocity.length() * speed_active_per_mps, speed_active_max)
 	_queued = false
 	_already_hit.clear()
-	_path.clear()
-	if _guardian:
-		_path.append(_guardian.global_position)
 	_pierce_receiver = null
 	_pierce_primary = null
 	_pierce_done.clear()
@@ -232,7 +230,7 @@ func _sweep_hits() -> void:
 			_already_hit[receiver.get_instance_id()] = true
 			var dmg := _deal(receiver, mult, dir, _lock)
 			_begin_pierce(receiver, _part_of_point(receiver, _lock, lp), lp, dmg, dir)
-	_shape.radius = hit_radius + minf(_swing_velocity.length() * speed_radius_per_mps, speed_radius_max)
+	_shape.radius = swing_radius()
 	var center := pos + Vector3.UP * 0.4 + dir * hit_reach
 	var params := PhysicsShapeQueryParameters3D.new()
 	params.shape = _shape
@@ -287,7 +285,7 @@ static func closest_point_on_part(cs: CollisionShape3D, p: Vector3) -> Vector3:
 	var xf := cs.global_transform
 	var l := xf.affine_inverse() * p
 	var sh := cs.shape
-	var q := Vector3.ZERO
+	var q := Vector3.ZERO  # unbekannte Shape -> Mittelpunkt
 	if sh is BoxShape3D:
 		var h := (sh as BoxShape3D).size * 0.5
 		q = l.clamp(-h, h)
@@ -296,8 +294,8 @@ static func closest_point_on_part(cs: CollisionShape3D, p: Vector3) -> Vector3:
 		q = l if l.length() <= r else l.normalized() * r
 	elif sh is CapsuleShape3D:
 		var c := sh as CapsuleShape3D
-		var axis := Vector3(0.0, clampf(l.y, -maxf(c.height * 0.5 - c.radius, 0.0),
-				maxf(c.height * 0.5 - c.radius, 0.0)), 0.0)
+		var half := maxf(c.height * 0.5 - c.radius, 0.0)
+		var axis := Vector3(0.0, clampf(l.y, -half, half), 0.0)
 		var off := l - axis
 		q = l if off.length() <= c.radius else axis + off.normalized() * c.radius
 	elif sh is CylinderShape3D:
@@ -306,8 +304,6 @@ static func closest_point_on_part(cs: CollisionShape3D, p: Vector3) -> Vector3:
 		if flat.length() > cy.radius:
 			flat = flat.normalized() * cy.radius
 		q = Vector3(flat.x, clampf(l.y, -cy.height * 0.5, cy.height * 0.5), flat.y)
-	else:
-		q = Vector3.ZERO
 	return xf * q
 
 
@@ -317,8 +313,8 @@ func pierce_falloff(d: float) -> float:
 	return pierce_secondary_max * pow(k, pierce_falloff_exp)
 
 
-## Schlag-Radius der Flugbahn (wie die Messer-Kugel, waechst mit dem Tempo).
-func pierce_path_radius() -> float:
+## Schlag-Radius der Messer-Kugel und der Flugbahn (waechst mit dem Tempo).
+func swing_radius() -> float:
 	return hit_radius + minf(_swing_velocity.length() * speed_radius_per_mps, speed_radius_max)
 
 
@@ -326,9 +322,7 @@ func _shape_of(col: Object, shape_idx: int) -> CollisionShape3D:
 	if not (col is CollisionObject3D) or shape_idx < 0 or body_parts(col as Node).size() < 2:
 		return null
 	var co := col as CollisionObject3D
-	var owner_id := co.shape_find_owner(shape_idx)
-	var o := co.shape_owner_get_owner(owner_id)
-	return o as CollisionShape3D
+	return co.shape_owner_get_owner(co.shape_find_owner(shape_idx)) as CollisionShape3D
 
 
 ## Koerperteil eines Lock-Punkts: Eltern-Shape oder das naechste Teil.
@@ -360,10 +354,7 @@ func _begin_pierce(receiver: Node, primary: CollisionShape3D, epicenter: Vector3
 	_pierce_used = 0.0
 	_pierce_done.clear()
 	_pierce_done[primary.get_instance_id()] = true
-	last_pierce = [{
-		"part": part_name(primary), "pct": 1.0, "damage": damage, "dist": 0.0,
-		"traversed": true, "primary": true,
-	}]
+	last_pierce = [_pierce_entry(primary, 1.0, damage, 0.0, true, true)]
 	last_hit["part"] = part_name(primary)
 	last_hit["epicenter"] = epicenter
 	if debug_hits:
@@ -378,7 +369,7 @@ func _begin_pierce(receiver: Node, primary: CollisionShape3D, epicenter: Vector3
 func _update_pierce() -> void:
 	if _pierce_receiver == null or not is_instance_valid(_pierce_receiver):
 		return
-	var radius := pierce_path_radius()
+	var radius := swing_radius()
 	for cs in body_parts(_pierce_receiver):
 		var id := cs.get_instance_id()
 		if _pierce_done.has(id) or not _path_touches(cs, radius):
@@ -387,8 +378,7 @@ func _update_pierce() -> void:
 		var d := part_distance(cs, _pierce_epicenter)
 		var pct := minf(pierce_falloff(d), maxf(pierce_secondary_budget - _pierce_used, 0.0))
 		var dmg := _pierce_damage * pct
-		var entry := {"part": part_name(cs), "pct": pct, "damage": dmg, "dist": d,
-				"traversed": true, "primary": false}
+		var entry := _pierce_entry(cs, pct, dmg, d, true)
 		last_pierce.append(entry)
 		if pct <= 0.0:
 			if debug_hits:
@@ -404,6 +394,13 @@ func _update_pierce() -> void:
 					% [entry.part, roundi(pct * 100.0), dmg, d])
 			_marker(closest_point_on_part(cs, _pierce_epicenter),
 					Color(1.0, 0.2 + 0.8 * (1.0 - pct / maxf(pierce_secondary_max, 0.01)), 0.1), 0.25)
+
+
+## Eintrag fuer last_pierce.
+func _pierce_entry(cs: CollisionShape3D, pct: float, damage: float, dist: float,
+		traversed: bool, primary := false) -> Dictionary:
+	return {"part": part_name(cs), "pct": pct, "damage": damage, "dist": dist,
+			"traversed": traversed, "primary": primary}
 
 
 func _path_touches(cs: CollisionShape3D, radius: float) -> bool:
@@ -426,8 +423,7 @@ func _finish_pierce() -> void:
 		if _pierce_done.has(cs.get_instance_id()):
 			continue
 		var d := part_distance(cs, _pierce_epicenter)
-		last_pierce.append({"part": part_name(cs), "pct": 0.0, "damage": 0.0, "dist": d,
-				"traversed": false, "primary": false})
+		last_pierce.append(_pierce_entry(cs, 0.0, 0.0, d, false))
 		if debug_hits:
 			print("[PIERCE]   %-8s   0 %%  (nicht durchquert, %.2f m vom Epizentrum)" % [part_name(cs), d])
 	if debug_hits:
@@ -509,12 +505,13 @@ func compute_damage(vel: Vector3, combo_mult := 1.0, turbo := false) -> Dictiona
 
 func _deal(target: Node, mult: float, dir: Vector3, point: Node3D = null) -> float:
 	var info := compute_damage(_swing_velocity, mult, _swing_turbo)
-	var point_mult: float = point.damage_mult if point is LockPoint else 1.0
+	var lp := point as LockPoint
+	var point_mult := lp.damage_mult if lp else 1.0
 	info["raw_damage"] = info.damage * point_mult
 	info["hit_cap"] = hit_cap_for(target)
 	info.damage = scale_for_target(info.raw_damage, target)
 	info["point_mult"] = point_mult
-	info["point"] = (point as LockPoint).label if point is LockPoint else ""
+	info["point"] = lp.label if lp else ""
 	last_hit = info
 	target.take_hit(info.damage, dir, _guardian)
 	hit_landed.emit(target, info.damage, info)

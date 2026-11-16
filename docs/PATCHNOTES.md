@@ -9,6 +9,9 @@ Kein Gameplay-Unterschied: Smoke-Test liefert dieselben Messwerte wie vorher.
 - **Movement:** Seil-Zähler über `Array.any/filter`, Hüften-/Winden-/Kamera-Logik je einmal statt doppelt,
   `Vector3.slide` für Wall-Run und Seil-Steuerung, Seil-Rendering in kurze Funktionen geteilt.
   `GrappleHook`: ungenutzte Felder (`normal`, `attach_height`, `total_length`) entfernt.
+- **Combat/Targeting:** Ziel-Suche über einen gemeinsamen Filter (`_lockables_within`), doppelte Aim-Start-/
+  Lock-Punkt-Berechnungen entfernt, ungenutzter `toggle_hard_lock` gestrichen. Messer: ein `swing_radius()`
+  für Kugel und Piercing-Bahn, `_pierce_entry` für die Debug-Liste. HUD-Treffertext vereinfacht.
 
 ### 2026-11-16 – CLAUDE.md
 - `CLAUDE.md` im Hauptverzeichnis: kurze Projektstruktur + verbindliches Code-Prinzip (minimal, klar, Engine-Funktionen nutzen).
