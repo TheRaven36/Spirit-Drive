@@ -7,11 +7,13 @@ extends RefCounted
 ## Layout:
 ##   LMB / X ............ attack        (Jagdmesser-Slash)
 ##   RMB / LT ........... grapple       (straffes Seil, halten; Doppel-Tap = 2. Haken)
+##                        Doppel-Tap auf einen Gegner = beide Seile am Gegner (enger Anflug)
 ##   W / S am Seil ...... Winde: W = Turbo-Einzug, S = starres Seil (A/D = seitlich)
 ##   Mausrad-Klick / R3 . hard_lock     (Ziel waehlen + Kamera-Snap-Impuls, halten = loesen)
 ##   Mausrad / D-Pad L-R  lock_next / lock_prev (Trefferpunkt-/Ziel-Wechsel)
 ##   LMB halten ......... Combat-Seil zum Ziel (Hard-Lock oder Gegner unterm
 ##                        Fadenkreuz = Auto-Grab) + heranziehen, loslassen = Schlag
+##                        Doppelklick + halten = zweites Seil an dasselbe Ziel
 ##   Shift / L3 ......... sprint
 ##   Space / A .......... jump
 ##   P / View ........... toggle_camera (First-/Third-Person)

@@ -41,6 +41,39 @@ Neueste Einträge immer oben.
   Signale, Waffen-Element im Treffer, HUD-Slots/Haken/HP/Overlay).
 - Smoke-Test: Doppel-Tap-Gameplay-Check wartet jetzt den Werfer-Cooldown ab.
 
+### 2026-11-16 – Gegner-Anflug: Carving statt Rail-Snap, Doppelklick = doppelte Kraft
+Ersetzt den unveröffentlichten Rail-Lock (kein sofortiges Umlenken beim Anheften, kein Einrasten auf eine Linie).
+- **Carving:** Am Gegner dreht eine Lenk-Drehrate (`carve_turn_rate` 3,5 rad/s pro Seil, `Vector3.rotated`) die
+  vorhandene Geschwindigkeit zum Ziel. Der Betrag bleibt exakt erhalten, die Flugkurve biegt sich stetig ein
+  (Zentripetal-Beschleunigung = Rate × Tempo, Wenderadius = Tempo / Rate).
+- **Schwerkraft am Gegner** wirkt nur noch entlang der Zielrichtung, wenn das Ziel unten liegt: Sturzflüge
+  beschleunigen weiter, Durchsacken unter die Anflugbahn entfällt.
+- **Ein Seil:** einfache Lenk- und Zugkraft, weiter Bogen, A/D bleibt aktiv.
+- **Zwei Seile am selben Gegner** (LMB-Doppelklick + halten, RMB-Doppel-Tap oder RMB + LMB): doppelte Lenkrate
+  und doppelte Zugkraft (beide Winden mit Combat-Stärke) → etwa halber Wenderadius. HUD zeigt `DOPPEL`.
+- **LMB-Doppelklick:** Ein kurzer Klick (< `double_tap_window`) schlägt nicht sofort, das Seil zieht weiter; ein
+  zweiter Klick im Fenster hängt das zweite Combat-Seil an dasselbe Ziel. Ohne zweiten Klick folgt der Schlag am
+  Fensterende (max. 0,2 s später). Halten + Loslassen schlägt wie bisher sofort.
+- Der Dash-Kick (`combat_pull_impulse`) kommt nur vom ersten Combat-Seil; ein Combat-Seil verdrängt nie ein anderes
+  Combat-Seil. RMB auf einen Gegner-Körper ohne eigenen Lock-Punkt (Riese) merkt sich den Gegner als Seil-Ziel.
+- Smoke-Test (22 m/s tangential an einem Dummy vorbei): ein Seil Radius 5,2 m / Zug 142 m/s², zwei Seile
+  3,3 m / 258 m/s², Tempo 100 % erhalten, kein Durchsacken, beide treffen. Free-Flow-Sturzflug: 157 statt 210
+  Schaden (zielt direkter auf den Lock-Punkt).
+
+### 2026-11-16 – Code entschlackt (CLAUDE.md-Prinzip)
+Kein Gameplay-Unterschied: Smoke-Test liefert dieselben Messwerte wie vorher.
+- **Movement:** Seil-Zähler über `Array.any/filter`, Hüften-/Winden-/Kamera-Logik je einmal statt doppelt,
+  `Vector3.slide` für Wall-Run und Seil-Steuerung, Seil-Rendering in kurze Funktionen geteilt.
+  `GrappleHook`: ungenutzte Felder (`normal`, `attach_height`, `total_length`) entfernt.
+- **Combat/Targeting:** Ziel-Suche über einen gemeinsamen Filter (`_lockables_within`), doppelte Aim-Start-/
+  Lock-Punkt-Berechnungen entfernt, ungenutzter `toggle_hard_lock` gestrichen. Messer: ein `swing_radius()`
+  für Kugel und Piercing-Bahn, `_pierce_entry` für die Debug-Liste. HUD-Treffertext vereinfacht.
+- **Testarena:** Riese baut Körperteile/Lock-Punkte über `_add_part`/`_add_lock_point`, Flash-/Anzeige-Zeiten
+  bei Dummy und Riese als Konstanten, Arena-Kollision ohne Zwischenvariablen.
+
+### 2026-11-16 – CLAUDE.md
+- `CLAUDE.md` im Hauptverzeichnis: kurze Projektstruktur + verbindliches Code-Prinzip (minimal, klar, Engine-Funktionen nutzen).
+
 ## v0.9 – Release 2026-11-16
 
 ### 2026-11-16 – Dual-Hooks: echte Kraft-Vektorsumme v0.9

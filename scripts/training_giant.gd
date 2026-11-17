@@ -6,6 +6,9 @@ extends StaticBody3D
 
 signal defeated
 
+const FLASH_TIME := 0.15
+const DMG_SHOW_TIME := 1.5
+
 @export var max_hp := 3000.0
 @export var respawn_time := 4.0
 ## Boss-Skalierung: ein Treffer nimmt hoechstens ~diesen Anteil der Max-HP
@@ -54,41 +57,9 @@ func _ready() -> void:
 	_mat.albedo_color = Color(0.75, 0.35, 0.35)
 	_mat.emission_enabled = true
 	for p: Array in PARTS:
-		var mi := MeshInstance3D.new()
-		var cs := CollisionShape3D.new()
-		if p[1] == "box":
-			var bm := BoxMesh.new()
-			bm.size = p[2]
-			mi.mesh = bm
-			var bs := BoxShape3D.new()
-			bs.size = p[2]
-			cs.shape = bs
-		else:
-			var sm := SphereMesh.new()
-			sm.radius = p[2].x
-			sm.height = p[2].x * 2.0
-			mi.mesh = sm
-			var ss := SphereShape3D.new()
-			ss.radius = p[2].x
-			cs.shape = ss
-		mi.name = p[0]
-		mi.position = p[3]
-		mi.material_override = _mat
-		cs.name = "Shape_" + String(p[0])
-		cs.position = p[3]
-		add_child(mi)
-		add_child(cs)
-		_meshes.append(mi)
-		_shapes[p[0]] = cs
+		_add_part(p[0], p[1] == "box", p[2], p[3])
 	for p: Array in POINTS:
-		var lp := LockPoint.new()
-		lp.name = "LP_" + String(p[0]).replace(" ", "")
-		lp.label = p[0]
-		lp.damage_mult = p[2]
-		lp.radius = p[4]
-		var part: CollisionShape3D = _shapes[p[3]]
-		lp.position = p[1] - part.position
-		part.add_child(lp)
+		_add_lock_point(p[0], p[1], p[2], p[3], p[4])
 	_label = Label3D.new()
 	_label.position = Vector3(0, 15.0, 0)
 	_label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
@@ -97,6 +68,48 @@ func _ready() -> void:
 	_label.outline_size = 14
 	add_child(_label)
 	_update_label()
+
+
+## Koerperteil = Mesh + gleich grosse CollisionShape3D (Box: size, Kugel: size.x = Radius).
+func _add_part(part_name: String, is_box: bool, size: Vector3, pos: Vector3) -> void:
+	var mi := MeshInstance3D.new()
+	var cs := CollisionShape3D.new()
+	if is_box:
+		var bm := BoxMesh.new()
+		bm.size = size
+		mi.mesh = bm
+		var bs := BoxShape3D.new()
+		bs.size = size
+		cs.shape = bs
+	else:
+		var sm := SphereMesh.new()
+		sm.radius = size.x
+		sm.height = size.x * 2.0
+		mi.mesh = sm
+		var ss := SphereShape3D.new()
+		ss.radius = size.x
+		cs.shape = ss
+	mi.name = part_name
+	mi.position = pos
+	mi.material_override = _mat
+	cs.name = "Shape_" + part_name
+	cs.position = pos
+	add_child(mi)
+	add_child(cs)
+	_meshes.append(mi)
+	_shapes[part_name] = cs
+
+
+## Lock-Punkt haengt unter der Shape seines Koerperteils (folgt der Hitbox).
+func _add_lock_point(label: String, pos: Vector3, mult: float, part_name: String, radius: float) -> void:
+	var part: CollisionShape3D = _shapes[part_name]
+	var lp := LockPoint.new()
+	lp.name = "LP_" + label.replace(" ", "")
+	lp.label = label
+	lp.damage_mult = mult
+	lp.radius = radius
+	lp.position = pos - part.position
+	part.add_child(lp)
 
 
 func get_hit_cap() -> float:
@@ -114,22 +127,20 @@ func take_hit(damage: float, _dir: Vector3, source: Node) -> void:
 	hp -= damage
 	last_damage = damage
 	last_point = ""
-	if source is GuardianController and not (source as GuardianController).knife.last_hit.is_empty():
+	if source is GuardianController:
 		last_point = (source as GuardianController).knife.last_hit.get("point", "")
-	_flash = 0.15
-	_dmg_show = 1.5
+	_flash = FLASH_TIME
+	_dmg_show = DMG_SHOW_TIME
 	if hp <= 0.0:
 		_down_t = respawn_time
-		for m in _meshes:
-			m.visible = false
+		_set_visible(false)
 		defeated.emit()
 	_update_label()
 
 
 func _process(delta: float) -> void:
-	if _flash > 0.0:
-		_flash -= delta
-	_mat.emission = Color(1, 1, 1) * (_flash / 0.15) * 2.0 if _flash > 0.0 else Color.BLACK
+	_flash = maxf(_flash - delta, 0.0)
+	_mat.emission = Color.WHITE * (_flash / FLASH_TIME) * 2.0
 	if _dmg_show > 0.0:
 		_dmg_show -= delta
 		if _dmg_show <= 0.0:
@@ -138,9 +149,13 @@ func _process(delta: float) -> void:
 		_down_t -= delta
 		if _down_t <= 0.0:
 			hp = max_hp
-			for m in _meshes:
-				m.visible = true
+			_set_visible(true)
 			_update_label()
+
+
+func _set_visible(on: bool) -> void:
+	for m in _meshes:
+		m.visible = on
 
 
 func _update_label() -> void:

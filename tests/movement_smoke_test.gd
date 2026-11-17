@@ -37,6 +37,10 @@ func _run() -> void:
 	await _test_hitbox_alignment()
 	await _test_auto_grab_free_flow()
 	await _test_auto_grab_hold()
+	await _test_enemy_carve_single_vs_dual()
+	await _test_lmb_double_click()
+	await _test_rmb_double_tap_enemy()
+	await _test_giant_double_click_pierce()
 	await _test_hard_lock_camera()
 	await _test_hard_lock_out_of_range()
 	await _test_free_camera_while_swinging()
@@ -207,7 +211,7 @@ func _test_rigid_rope() -> void:
 func _air_swing(hold_s: bool) -> Dictionary:
 	await _place(Vector3(0, 70.0, 0), 0.0, 0.0)
 	var anchor := g.global_position + Vector3(0, 15.0, 0)
-	g.hook_left.attach(anchor, Vector3.DOWN, null, g.global_position)
+	g.hook_left.attach(anchor, null, g.global_position)
 	g._primary = g.hook_left
 	g.velocity = Vector3(20.0, 0, 0)
 	g._refresh_state()
@@ -430,7 +434,7 @@ func _hang_from(pos: Vector3, anchors: Array, v0: Vector3) -> void:
 	await _place(pos, 0.0, 0.0)
 	for i in anchors.size():
 		var h: GrappleHook = g.hook_left if i == 0 else g.hook_right
-		h.attach(anchors[i], Vector3.DOWN, null, g.global_position)
+		h.attach(anchors[i], null, g.global_position)
 	g._primary = g.hook_left
 	g.velocity = v0
 	g._refresh_state()
@@ -647,6 +651,180 @@ func _test_auto_grab_hold() -> void:
 	_check(ch != null and ch.target == d, "Ziel kommt ins Fadenkreuz -> Seil greift sofort")
 	Input.action_release("attack")
 	await _frames(40)
+
+
+func _test_enemy_carve_single_vs_dual() -> void:
+	print("Gegner-Anflug: Carving mit einem vs. zwei Seilen")
+	var one := await _enemy_carve(1)
+	var two := await _enemy_carve(2)
+	for r: Dictionary in [one, two]:
+		print("    %d Seil(e): Radius %.1f m, Zug %.0f m/s², max. Knick %.1f°/Frame (dv %.1f m/s), Tempo min %.0f %%, "
+				% [r.n, r.radius, r.pull, r.max_turn, r.max_dv, r.min_speed * 100.0]
+				+ "Abweichung %.1f m, Durchsacken %.1f m, Treffer %s nach %d Frames"
+				% [r.dev, r.drop, r.reached, r.frames])
+	_check(not one.dual and two.dual, "Doppel-Lock nur mit zwei Seilen am selben Gegner")
+	_check(one.max_dv <= one.dv_bound and two.max_dv <= two.dv_bound,
+			"kein Snap: jede Aenderung durch Zug + Lenkung erklaerbar (%.1f <= %.1f, %.1f <= %.1f m/s pro Frame)"
+			% [one.max_dv, one.dv_bound, two.max_dv, two.dv_bound])
+	_check(one.min_speed > 0.95 and two.min_speed > 0.95, "Tempo bleibt im Anflug erhalten (min. %.0f %% / %.0f %%)"
+			% [one.min_speed * 100.0, two.min_speed * 100.0])
+	_check(two.radius < one.radius * 0.65, "zwei Seile: deutlich engerer Wenderadius (%.1f m vs %.1f m)"
+			% [two.radius, one.radius])
+	_check(two.pull > one.pull * 1.8, "zwei Seile: ~doppelte Zugbeschleunigung (%.0f vs %.0f m/s²)" % [two.pull, one.pull])
+	_check(one.dev > two.dev, "ein Seil schwingt in weiterem Bogen ein")
+	_check(one.drop < 1.0 and two.drop < 1.0, "kein Durchsacken waehrend des Zugs")
+	_check(one.reached and two.reached and two.frames <= one.frames, "beide treffen, zwei Seile schneller")
+
+
+## Schneller Quer-Flug neben einem schwebenden Dummy, dann n Combat-Seile (wie LMB-(Doppel)klick).
+func _enemy_carve(n: int) -> Dictionary:
+	var d := _dummy_near(Vector3(0, 18, -60))
+	await _place(Vector3(14, 18, -48), 0.0, 0.0)
+	var goal := d.get_lock_point()
+	var start := g.global_position
+	var line := start.direction_to(goal)
+	g.velocity = Vector3(12, 0, -14).normalized() * 22.0  # tangential am Ziel vorbei
+	for i in n:
+		g._fire_combat_hook(d)
+	var speed0 := g.velocity.length()
+	var res := {"n": n, "dual": g.is_dual_locked(), "pull": 0.0, "max_turn": 0.0, "max_dv": 0.0, "dv_bound": 0.0, "max_speed": 0.0, "min_speed": 1.0,
+			"radius": 0.0, "dev": 0.0, "drop": 0.0, "reached": false, "frames": 0}
+	var prev := g.velocity
+	var heading0 := g.velocity
+	for i in 120:
+		await physics_frame
+		if i == 0:
+			res.pull = g.pull_force.length()
+		res.max_turn = maxf(res.max_turn, rad_to_deg(prev.angle_to(g.velocity)))
+		res.max_dv = maxf(res.max_dv, prev.distance_to(g.velocity))
+		res.max_speed = maxf(res.max_speed, g.velocity.length())
+		prev = g.velocity
+		if i == 9:  # Wenderadius aus den ersten 10 Frames: r = v / omega
+			res.radius = g.velocity.length() / (heading0.angle_to(g.velocity) / (10.0 / 60.0))
+		var dist := g.global_position.distance_to(goal)
+		if dist > g.hang_length + 1.0:
+			res.min_speed = minf(res.min_speed, g.velocity.length() / speed0)
+		var on_line := start + line * (g.global_position - start).dot(line)
+		res.dev = maxf(res.dev, g.global_position.distance_to(on_line))
+		res.drop = maxf(res.drop, on_line.y - g.global_position.y)
+		res.frames = i + 1
+		if dist < _strike_reach_at(g.velocity.length()):  # Schlag wuerde treffen
+			res.reached = true
+			break
+	# Obergrenze pro Frame aus kontinuierlichen Kraeften: n Winden + Lenkung (omega * v) + Schwerkraft.
+	var accel: float = n * (g.reel_force * g.combat_reel_mult * g.reel_turbo_mult + g.carve_turn_rate * res.max_speed) + g.gravity
+	res.dv_bound = accel / 60.0
+	g._release_all_hooks()
+	_revive(d)
+	return res
+
+
+## Lock-Schlag-Reichweite des Messers bei diesem Tempo (wie KnifeCombat.strike_reach()).
+func _strike_reach_at(speed: float) -> float:
+	var k := g.knife
+	return k.lock_strike_reach + minf(speed * k.speed_reach_time, k.speed_reach_max)
+
+
+func _test_lmb_double_click() -> void:
+	print("LMB-Doppelklick: zwei Combat-Seile + Schlag")
+	var d := _dummy_near(Vector3(0, 18, -60))
+	await _place(Vector3(14, 18, -48), 0.0, 0.0)
+	_aim_at(d.get_lock_point())
+	await _process_frames(2)
+	await _frames(2)
+	# Einzelklick: Seil zieht kurz, Schlag folgt am Ende des Doppelklick-Fensters
+	await _tap("attack")
+	await _frames(2)
+	_check(g.combat_hooks_out() == 1 and not g.knife.is_attacking(), "kurzer Klick: ein Seil, Schlag wartet aufs Fenster")
+	await _frames(14)
+	_check(g.combat_hook() == null and g.knife.is_attacking(), "ohne zweiten Klick: Schlag am Fensterende")
+	await _frames(30)
+	# Doppelklick + halten
+	await _place(Vector3(14, 18, -48), 0.0, 0.0)
+	_aim_at(d.get_lock_point())
+	await _process_frames(2)
+	await _frames(2)
+	var hits := d.hits_taken
+	await _tap("attack")
+	await _frames(2)
+	Input.action_press("attack")
+	await _frames(2)
+	_check(g.combat_hooks_out() == 2 and g.is_dual_locked() and not g.knife.is_attacking(),
+			"Doppelklick + halten: beide Seile am Gegner, noch kein Schlag")
+	var reached := false
+	for i in 120:
+		await physics_frame
+		if g.global_position.distance_to(d.get_lock_point()) < 3.2:
+			reached = true
+			break
+	Input.action_release("attack")
+	await _frames(12)
+	_check(reached and g.combat_hook() == null and d.hits_taken > hits, "Loslassen = Momentum-Schlag trifft")
+	_revive(d)
+	await _frames(5)
+
+
+func _test_rmb_double_tap_enemy() -> void:
+	print("RMB-Doppel-Tap auf den Gegner")
+	var d := _dummy_near(Vector3(0, 18, -60))
+	await _place(Vector3(14, 18, -48), 0.0, 0.0)
+	_aim_at(d.get_lock_point())
+	await _process_frames(2)
+	await _frames(2)
+	await _tap("grapple")
+	await _frames(2)  # Loslassen registrieren -> Doppel-Tap-Fenster laeuft
+	_check(g.hooks_out() == 1 and not g.is_dual_locked(), "erster Tap: ein Seil am Gegner")
+	_aim_at(d.get_lock_point())
+	await _process_frames(1)
+	Input.action_press("grapple")
+	await _frames(2)
+	_check(g.hooks_out() == 2 and g.is_dual_locked(), "Doppel-Tap: beide Seile am Gegner")
+	var y0 := g.global_position.y
+	await _frames(15)
+	_check(g.global_position.y > y0 - 0.5, "kein Durchsacken am Gegner")
+	Input.action_press("attack")
+	await _frames(2)
+	_check(g.combat_hook() != null and g.is_dual_locked(), "LMB: Combat-Seil ersetzt ein RMB-Seil, beide bleiben am Gegner")
+	Input.action_release("attack")
+	await _frames(16)  # kurzer Klick -> Schlag nach dem Doppelklick-Fenster
+	_check(g.combat_hook() == null and g.knife.is_attacking(), "LMB loslassen = Schlag")
+	Input.action_release("grapple")
+	g._release_all_hooks()
+	_revive(d)
+	await _frames(5)
+
+
+func _test_giant_double_click_pierce() -> void:
+	print("Doppelklick-Schlag am Riesen (Tempo-Skalierung + Piercing)")
+	var giant: TrainingGiant = arena.get_node("TrainingGiant")
+	await _place(Vector3(10, 9.5, -72.0), 0.0, 0.0)
+	var chest: LockPoint = giant.find_child("LP_Brust", true, false)
+	_aim_at(chest.global_position)
+	await _process_frames(2)
+	await _frames(3)
+	await _action_event("hard_lock")
+	g.hard_lock = chest
+	var hits := giant.hits_taken
+	await _tap("attack")
+	await _frames(2)
+	Input.action_press("attack")
+	await _frames(2)
+	_check(g.combat_hooks_out() == 2 and g.is_dual_locked(), "Doppelklick greift den Riesen mit beiden Seilen")
+	for i in 150:
+		await physics_frame
+		if g.global_position.distance_to(chest.global_position) < 3.0:
+			break
+	Input.action_release("attack")
+	await _frames(15)
+	var lh: Dictionary = g.knife.last_hit
+	_check(giant.hits_taken > hits and lh.get("point", "") == "Brust", "Schlag trifft den Lock-Punkt (%s)" % lh.get("point", "-"))
+	_check(lh.get("speed_mult", 0.0) > 1.5, "volle Tempo-Skalierung (Speed x%.1f bei %.0f m/s)"
+			% [lh.get("speed_mult", 0.0), lh.get("speed", 0.0)])
+	_check(g.knife.last_pierce.size() > 1, "Piercing wertet weitere Koerperteile aus (%d Eintraege)" % g.knife.last_pierce.size())
+	g.release_hard_lock()
+	giant.hp = giant.max_hp
+	giant._down_t = 0.0
+	await _frames(5)
 
 
 func _test_hard_lock_camera() -> void:

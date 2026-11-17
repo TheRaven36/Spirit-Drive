@@ -18,7 +18,7 @@ const CONTROLS := [
 	["Laufen", "move_forward", "move_left", "move_back", "move_right"],
 	["Sprint", "sprint"], ["Sprung", "jump"],
 	["Seil (Doppel-Tap = 2. Haken)", "grapple"],
-	["Angriff / Gegner greifen", "attack"],
+	["Angriff / Gegner greifen (Doppelklick = 2 Seile)", "attack"],
 	["Ziel waehlen", "hard_lock"], ["Trefferpunkt wechseln", "lock_next", "lock_prev"],
 	["Spirit aufs Feld", "field_spirit_1", "field_spirit_2", "field_spirit_3"],
 	["Waffen-Spirit wechseln", "cycle_weapon_spirit_prev", "cycle_weapon_spirit_next"],

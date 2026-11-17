@@ -55,9 +55,10 @@ func _build_layout() -> void:
 			_add_box(Vector3(x, 14.0, z), Vector3(3.0, 28.0, 3.0), Color(0.8, 0.85, 1.0))
 
 	# Enge Halle mit Decke: Doppel-Haken in engen Raeumen testen.
-	_add_box(Vector3(-64.5, 4.5, 100.0), Vector3(1.0, 9.0, 20.0), Color(1.0, 0.9, 0.75))
-	_add_box(Vector3(-55.5, 4.5, 100.0), Vector3(1.0, 9.0, 20.0), Color(1.0, 0.9, 0.75))
-	_add_box(Vector3(-60.0, 9.5, 100.0), Vector3(10.0, 1.0, 20.0), Color(1.0, 0.9, 0.75))
+	var hall := Color(1.0, 0.9, 0.75)
+	_add_box(Vector3(-64.5, 4.5, 100.0), Vector3(1.0, 9.0, 20.0), hall)
+	_add_box(Vector3(-55.5, 4.5, 100.0), Vector3(1.0, 9.0, 20.0), hall)
+	_add_box(Vector3(-60.0, 9.5, 100.0), Vector3(10.0, 1.0, 20.0), hall)
 
 	# Schwebende Plattformen hoch oben.
 	for i in 8:
@@ -94,10 +95,8 @@ func _spawn_boxes() -> void:
 
 	for i in _boxes.size():
 		var b: Dictionary = _boxes[i]
-		var xf := Transform3D(Basis.from_scale(b.size), b.pos)
-		mm.set_instance_transform(i, xf)
+		mm.set_instance_transform(i, Transform3D(Basis.from_scale(b.size), b.pos))
 		mm.set_instance_color(i, b.color)
-
 		var shape := BoxShape3D.new()
 		shape.size = b.size
 		var col := CollisionShape3D.new()

@@ -72,7 +72,9 @@ func _process(_delta: float) -> void:
 		extra = "   TURBO"
 	elif g.is_rope_rigid():
 		extra = "   STARR"
-	if g.combat_hook():
+	if g.is_dual_locked():
+		extra += "   DOPPEL"
+	elif g.combat_hook():
 		extra += "   ANGRIFF"
 
 	_update_reticle(g)
@@ -103,9 +105,10 @@ func _update_reticle(g: GuardianController) -> void:
 func _hit_text(h: Dictionary) -> String:
 	if h.is_empty():
 		return "-"
-	var t := "%d  (Speed x%.1f" % [h.damage, h.speed_mult]
+	var t := "%d" % h.damage
 	if h.get("point", "") != "":
-		t = "%d @ %s  (Speed x%.1f" % [h.damage, h.point, h.speed_mult]
+		t += " @ %s" % h.point
+	t += "  (Speed x%.1f" % h.speed_mult
 	if h.is_plunge:
 		t += ", PLUNGE x%.1f" % h.plunge_mult
 	if h.get("effect_tag", "") != "":

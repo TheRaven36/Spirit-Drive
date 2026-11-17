@@ -244,7 +244,7 @@ func _test_hud_hooks() -> void:
 	_check(L.is_ready() and R.is_ready() and L.ratio == 1.0, "Start: beide Haken bereit")
 	var fired: Array = []
 	g.hook_fired.connect(func(h: GrappleHook) -> void: fired.append(h), CONNECT_ONE_SHOT)
-	g.hook_left.attach(g.global_position + Vector3(0, 10, -5), Vector3.DOWN, null, g.global_position)
+	g.hook_left.attach(g.global_position + Vector3(0, 10, -5), null, g.global_position)
 	await _process_frames(1)
 	_check(fired.size() == 1 and fired[0] == g.hook_left, "Signal hook_fired (links)")
 	_check(L.active and L.ratio == 0.0 and not L.is_ready() and R.is_ready(), "abgefeuert = links ausgegraut")
