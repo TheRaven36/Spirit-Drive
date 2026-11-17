@@ -13,6 +13,7 @@ const NEAR_FOCUS := Vector3(3, 1.2, -30)
 const LEASH_SPOT := Vector3(60, 1.2, -90)
 
 var _fails := 0
+var world: Node
 var arena: Node
 var g: GuardianController
 var sp: SpiritEntity
@@ -24,9 +25,10 @@ func _initialize() -> void:
 
 
 func _run() -> void:
-	arena = load("res://scenes/test_arena.tscn").instantiate()
-	root.add_child(arena)
-	g = arena.get_node("Guardian")
+	world = load("res://scenes/world.tscn").instantiate()
+	root.add_child(world)
+	arena = world.get_node("Areas/TestArena")
+	g = world.get_node("Guardian")
 	sp = g.get_node("SpiritEntity")
 	roster = g.spirit_roster
 	await _frames(20)

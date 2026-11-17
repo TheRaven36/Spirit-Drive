@@ -6,6 +6,7 @@ extends SceneTree
 ## Exit-Code 0 = alles ok, 1 = Fehler.
 
 var _fails := 0
+var world: Node
 var arena: Node
 var g: GuardianController
 var roster: SpiritRosterComponent
@@ -23,11 +24,12 @@ func _run() -> void:
 	_test_resources()
 	_test_pillar_matrix()
 
-	arena = load("res://scenes/test_arena.tscn").instantiate()
-	root.add_child(arena)
-	g = arena.get_node("Guardian")
+	world = load("res://scenes/world.tscn").instantiate()
+	root.add_child(world)
+	arena = world.get_node("Areas/TestArena")
+	g = world.get_node("Guardian")
 	roster = g.get_node("SpiritRoster")
-	hud = arena.get_node("MinimalHUD")
+	hud = world.get_node("MinimalHUD")
 	# Feld-Spirit-KI aus (Bodyguard wuerde den Messer-Test-Dummy treffen); Daten-Bindung bleibt.
 	g.get_node("SpiritEntity").set_physics_process(false)
 	roster.field_spirit_changed.connect(func(s: SpiritData) -> void: _field_events.append(s))
@@ -44,6 +46,7 @@ func _run() -> void:
 	await _test_hud_health()
 	await _test_controls_overlay()
 	await _test_damage_numbers()
+	await _test_armor_break()
 
 	print("SPIRIT TEST: %s" % ("OK" if _fails == 0 else "%d FEHLER" % _fails))
 	quit(1 if _fails > 0 else 0)
@@ -207,7 +210,7 @@ func _test_weapon_damage() -> void:
 	var h := g.knife.last_hit
 	_check(hp0 - d.hp > 0.0 and h.get("effect_tag", "") == "burn" and h.get("element", "") == "FIRE",
 			"Treffer traegt Element + Tag (burn)")
-	var nums := arena.get_node("DamageNumbers").get_children()
+	var nums := world.get_node("DamageNumbers").get_children()
 	_check(not nums.is_empty() and nums[-1] is DamageNumber
 			and (nums[-1] as DamageNumber).world_pos == h.get("hit_position", Vector3.INF)
 			and KnifeCombat.part_distance(d.get_node("Shape"), h.hit_position) < 0.05,
@@ -352,7 +355,7 @@ func _test_damage_numbers() -> void:
 	_check(c20.r == 1.0 and c20.g > 0.95 and c20.b > 0.8, "20 = fast weiss %s" % c20)
 	_check(c200.r == 1.0 and c200.g < c20.g and c200.g > c400.g and c200.b < 0.3,
 			"200 = Gelb/Orange dazwischen %s" % c200)
-	var mgr: DamageNumberManager = arena.get_node("DamageNumbers")
+	var mgr: DamageNumberManager = world.get_node("DamageNumbers")
 	var n := mgr.spawn(400.0, g.global_position + Vector3(0, 1, -5))
 	_check(n != null and n.text == "400" and n.get_theme_color("font_color") == c400
 			and n.get_theme_constant("outline_size") > 0, "Zahl, Farbe und schwarze Outline")
@@ -381,6 +384,49 @@ func _test_damage_numbers() -> void:
 func _until_age(n: DamageNumber, t: float) -> void:
 	while is_instance_valid(n) and n._age < t:
 		await process_frame
+
+
+## Ruestung: Stahl 1.5x gegen Panzerung, Elemente prallen ab; gebrochen -> Saeulen-Vorteil voll.
+func _test_armor_break() -> void:
+	print("Armor-Break (reiner Stahl)")
+	var k := g.knife
+	var giant: TrainingGiant = arena.get_node("GiantLarge")  # ORDER: Feuer (NATURE) hat Vorteil
+	_check(giant.is_armored() and giant.armor_integrity == 500.0, "Riese gepanzert (500)")
+	k._swing_velocity = Vector3.ZERO
+	roster.set_weapon_spirit(SpiritRosterComponent.SOCKET_NONE)
+	var steel_m := k.element_multiplier(giant)
+	roster.set_weapon_spirit(0)
+	var fire_m := k.element_multiplier(giant)
+	_check(is_equal_approx(steel_m, 1.5) and is_equal_approx(fire_m, 1.0),
+			"gepanzert: Stahl 1.5x, Feuer 1.0x (Saeulen-Vorteil prallt ab)")
+	# Echte Treffer: Schaden geht in die Ruestung, HP bleiben
+	var hp0 := giant.hp
+	var a0 := giant.armor_integrity
+	k._deal(giant, 1.0, Vector3.FORWARD, giant.global_position)
+	var fire_armor := a0 - giant.armor_integrity
+	roster.set_weapon_spirit(SpiritRosterComponent.SOCKET_NONE)
+	a0 = giant.armor_integrity
+	k._deal(giant, 1.0, Vector3.FORWARD, giant.global_position)
+	var steel_armor := a0 - giant.armor_integrity
+	_check(giant.hp == hp0 and k.last_hit.get("armor_hit", false), "Treffer gehen in die Ruestung, HP unveraendert")
+	_check(absf(steel_armor / fire_armor - 1.5) < 0.01,
+			"Stahl bricht Ruestung 1.5x schneller (%.2f vs %.2f)" % [steel_armor, fire_armor])
+	# Brechen
+	var broken := [false]
+	giant.armor_broken.connect(func() -> void: broken[0] = true, CONNECT_ONE_SHOT)
+	giant.armor_integrity = 1.0
+	k._deal(giant, 1.0, Vector3.FORWARD, giant.global_position)
+	_check(broken[0] and not giant.is_armored() and giant.hp < hp0, "Armor-Broken: Signal, Restschaden auf HP")
+	_check(is_equal_approx(k.element_multiplier(giant), 1.0), "gebrochen: Stahl ohne Ruestungs-Bonus 1.0x")
+	roster.set_weapon_spirit(0)
+	_check(is_equal_approx(k.element_multiplier(giant), 1.5), "gebrochen: Feuer vs ORDER voller Vorteil 1.5x")
+	var sp: SpiritEntity = g.get_node("SpiritEntity")
+	_check(is_equal_approx(SpiritRosterComponent.pillar_factor_against(sp.spirit.pillar, giant), 1.5)
+			and is_equal_approx(SpiritRosterComponent.pillar_factor_against(
+				sp.spirit.pillar, arena.get_node("TitanColossus")), 1.0),
+			"Feld-Spirit: gepanzerter Titan 1.0x, gebrochener Riese 1.5x")
+	giant.hp = giant.max_hp
+	giant.armor_integrity = giant.max_armor
 
 
 # --- Helfer ---------------------------------------------------------------

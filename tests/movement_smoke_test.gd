@@ -6,6 +6,7 @@ extends SceneTree
 const BOOST_SPOT := Vector3(0, 80, 0)
 
 var _fails := 0
+var world: Node
 var arena: Node
 var g: GuardianController
 
@@ -15,12 +16,18 @@ func _initialize() -> void:
 
 
 func _run() -> void:
-	arena = load("res://scenes/test_arena.tscn").instantiate()
-	root.add_child(arena)
-	g = arena.get_node("Guardian")
+	world = load("res://scenes/world.tscn").instantiate()
+	root.add_child(world)
+	arena = world.get_node("Areas/TestArena")
+	g = world.get_node("Guardian")
 	# Feld-Spirit stilllegen: sein Bodyguard-Angriff wuerde die Dummy-Messungen verfaelschen
 	# (eigener Test: tests/spirit_entity_test.gd).
 	g.get_node("SpiritEntity").process_mode = Node.PROCESS_MODE_DISABLED
+	# Ruestung der Riesen aus: die bisherigen Tests messen HP-Schaden (Ruestung: spirit_system_test).
+	for c in arena.get_children():
+		if c is TrainingGiant:
+			c.max_armor = 0.0
+			c.armor_integrity = 0.0
 	await _frames(30)
 
 	await _test_basic_movement()
@@ -947,7 +954,7 @@ func _test_giant_double_click_pierce() -> void:
 func _test_hard_lock_camera() -> void:
 	print("Freie Kamera + Kamera-Snap-Impuls")
 	var d := _dummy_near(Vector3(0, 1, -40))
-	var hud = arena.get_node("HUD")
+	var hud = world.get_node("HUD")
 	_check(hud.get("_lock") == null and hud.reticle is LockReticle, "Auswahl-UI = reiner Rahmen ohne Text-Label")
 	await _place(Vector3(0, 1.2, -10.0), 0.0, -0.02)
 	await _frames(3)
@@ -1008,7 +1015,7 @@ func _test_hard_lock_camera() -> void:
 func _test_hard_lock_out_of_range() -> void:
 	print("Auswahl ausserhalb der Reichweite / Auto-Clear")
 	var d := _dummy_near(Vector3(0, 1, -40))
-	var hud = arena.get_node("HUD")
+	var hud = world.get_node("HUD")
 	await _place(Vector3(0, 1.2, -10.0), 0.0, -0.02)
 	await _frames(3)
 	await _action_event("hard_lock")

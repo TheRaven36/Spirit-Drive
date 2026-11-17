@@ -52,6 +52,8 @@ extends Node
 ##   Ziel eine Saeule hat (Methode get_spirit_pillar() -> SpiritData.Pillar).
 ##   Leere Waffe (null, reiner Stahl): Silber-Trail, kein Saeulen-Faktor, dafuer
 ##   +steel_momentum_bonus bei High-Speed-Treffern (Schlag-Tempo >= steel_bonus_min_speed).
+## RUESTUNG (Ziel mit is_armored()): Elementar-Faktoren prallen ab (gesockelt = 1.0x),
+##   reiner Stahl bricht sie mit armor_break_multiplier. Gebrochen -> Saeulen-Faktor wieder voll.
 
 signal slash_started(combo_index: int)
 signal hit_landed(target: Node, damage: float, info: Dictionary)
@@ -113,6 +115,8 @@ enum Phase { IDLE, WINDUP, ACTIVE, RECOVERY }
 @export var steel_momentum_bonus := 0.15
 ## Ab diesem Schlag-Tempo (m/s) gilt ein Treffer als High-Speed.
 @export var steel_bonus_min_speed := 20.0
+## Stahl gegen Ruestung (1.5 = +50 %). Schmiede-Upgrades erhoehen ihn.
+@export var armor_break_multiplier := 1.5
 @export_group("Debug")
 ## Konsolen-Ausgabe + Marker fuer Treffer-Zonen, Epizentrum und Prozentwerte.
 @export var debug_hits := true
@@ -193,15 +197,14 @@ func set_weapon_spirit(spirit: SpiritData) -> void:
 		(_trail_mm.mesh.surface_get_material(0) as StandardMaterial3D).albedo_color = trail_color
 
 
-## Faktor der Waffe gegen `target`: gesockelt = Spirit-Multiplikator x Saeulen-Faktor,
-## leer = 1.0 bzw. Stahl-Bonus bei High-Speed (Saeulen ignoriert).
+## Faktor der Waffe gegen `target`: gesockelt = Spirit-Multiplikator x Saeulen-Faktor (prallt an
+## Ruestung ab), leer = Armor-Break gegen Ruestung x Stahl-Bonus bei High-Speed.
 func element_multiplier(target: Node) -> float:
 	if weapon_spirit == null:
-		return 1.0 + steel_momentum_bonus if is_steel_bonus() else 1.0
-	var m := weapon_spirit.weapon_damage_multiplier
-	if target and target.has_method("get_spirit_pillar"):
-		m *= SpiritRosterComponent.pillar_multiplier(weapon_spirit.pillar, target.get_spirit_pillar())
-	return m
+		var armor := armor_break_multiplier if SpiritRosterComponent.is_armored(target) else 1.0
+		return armor * (1.0 + steel_momentum_bonus if is_steel_bonus() else 1.0)
+	return weapon_spirit.weapon_damage_multiplier \
+			* SpiritRosterComponent.pillar_factor_against(weapon_spirit.pillar, target)
 
 
 ## Leere Waffe + aktueller Schlag schnell genug -> Stahl-Bonus.
@@ -629,6 +632,7 @@ func _deal(target: Node, mult: float, dir: Vector3, hit_pos: Vector3, point: Nod
 	info["element"] = weapon_spirit.element_name() if weapon_spirit else ""
 	info["effect_tag"] = weapon_spirit.special_effect_tag if weapon_spirit else ""
 	info["steel_bonus"] = is_steel_bonus()
+	info["armor_hit"] = SpiritRosterComponent.is_armored(target)
 	info["hit_cap"] = hit_cap_for(target)
 	info.damage = scale_for_target(info.raw_damage, target)
 	info["point_mult"] = point_mult

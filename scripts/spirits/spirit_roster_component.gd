@@ -93,7 +93,7 @@ func reserve_indices() -> Array[int]:
 # --- Aenderungen ----------------------------------------------------------
 ## Neues 3er-Roster setzen (z. B. aus einem Auswahl-Menue). Indizes werden zurueckgesetzt.
 func set_roster(new_spirits: Array[SpiritData]) -> bool:
-	if new_spirits.size() != ROSTER_SIZE or new_spirits.has(null):
+	if not is_valid_roster(new_spirits):
 		return false
 	spirits = new_spirits.duplicate()
 	active_field_spirit_index = 0
@@ -101,6 +101,16 @@ func set_roster(new_spirits: Array[SpiritData]) -> bool:
 	roster_changed.emit(spirits)
 	field_spirit_changed.emit(field_spirit())
 	weapon_spirit_changed.emit(weapon_spirit())
+	return true
+
+
+## Genau ROSTER_SIZE verschiedene Spirits – sonst frei kombinierbar (alle Saeulen/Elemente).
+static func is_valid_roster(list: Array[SpiritData]) -> bool:
+	if list.size() != ROSTER_SIZE or list.has(null):
+		return false
+	for s in list:
+		if list.count(s) > 1:
+			return false
 	return true
 
 
@@ -142,6 +152,19 @@ static func pillar_multiplier(attacker: SpiritData.Pillar, defender: SpiritData.
 	if PILLAR_BEATS.get(defender, -1) == attacker:
 		return DISADVANTAGE_MULT
 	return NEUTRAL_MULT
+
+
+## Ziel traegt noch Ruestung (is_armored()): Elementar-Faktoren prallen ab.
+static func is_armored(target: Object) -> bool:
+	return target != null and target.has_method("is_armored") and target.is_armored()
+
+
+## Saeulen-Faktor eines Angreifers gegen `target` – nur ohne Ruestung und wenn das Ziel
+## eine Saeule hat (get_spirit_pillar), sonst 1.0. Gilt fuer Waffe und Feld-Spirit.
+static func pillar_factor_against(attacker: SpiritData.Pillar, target: Object) -> float:
+	if target == null or is_armored(target) or not target.has_method("get_spirit_pillar"):
+		return NEUTRAL_MULT
+	return pillar_multiplier(attacker, target.get_spirit_pillar())
 
 
 ## Multiplikator des gesockelten Waffen-Spirits gegen ein Ziel mit Saeule `defender`.

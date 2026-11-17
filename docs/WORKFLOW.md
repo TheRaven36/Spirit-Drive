@@ -37,6 +37,9 @@ godot --headless --path . --script res://tests/movement_smoke_test.gd
 godot --headless --path . --script res://tests/spirit_system_test.gd
 # Feld-Spirit-KI (Exit-Code 0 = ok)
 godot --headless --path . --script res://tests/spirit_entity_test.gd
+# Homebase-Stationen + Tunnel-Loading-Gate (Exit-Code 0 = ok)
+godot --headless --path . --script res://tests/homebase_test.gd
+godot --headless --path . --script res://tests/tunnel_test.gd
 ```
 
 ## Lokal starten (Windows)

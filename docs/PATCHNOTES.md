@@ -4,6 +4,49 @@ Neueste Einträge immer oben.
 
 ## Unreleased
 
+### 2026-11-17 – Phase 3A: Homebase, Armor-Break-Stahl, 3D-Grapple-Tunnel
+**Neue Szenen-Struktur**
+- Hauptszene ist jetzt `scenes/world.tscn` (Guardian, HUDs, Licht, Umgebung + `Areas`). `test_arena.tscn`
+  ist nur noch die Höhle – ein Areal, das der Tunnel ent- und wieder laden kann. Die Höhle hat ein 10 × 10 m
+  Tor in der +Z-Wand.
+
+**Homebase-Outpost (`scenes/homebase_outpost.tscn`, Prefab)**
+- 26 × 26 × 10 m (CSG-Raum mit Tor, Collision), komplett `SafeZone` (Gruppe `safe_zone`): dort bleibt der
+  Feld-Spirit strikt in `FOLLOW_PROTECT` (kein Fokus-Ziel, kein Bodyguard).
+- Gemeinsame Interaktion (`InteractionStation`): Trigger → „[F] Interagieren“ → F öffnet das Fenster
+  (Maus frei, Bewegung/Kamera/Spirit-Tasten pausiert), F oder ESC schließt. Neue Action `interact` (F / Y).
+- **Spirit-Altar** (Mitte): Roster frei aus allen 9 Spirits, jede 3er-Kombination erlaubt, nur keine Duplikate
+  (`SpiritRosterComponent.is_valid_roster`).
+- **Lagertruhe**: Beute Rucksack ↔ Truhe, Ausrüstung (Waffe/Rüstung/Haken) aus Rucksack oder Truhe anlegen.
+- **Schmied**: Tabs Grappling Hook / Waffe / Rüstung-Set – Test-Upgrades +5 % Seil-Reichweite, +5 % Winde,
+  +10 % Armor-Break, +10 % HP. Kosten als Material-Dictionary (heute Gold, später Monster-Materialien).
+- **Händler**: Tabs Guardian (Heiltrank, Gas-Kartusche) / Spirit (Elementar-Gel, Spirit-Injektion).
+- Neue Komponente `GuardianProgress` (Guardian/Progress): Material, Rucksack, Truhe, Ausrüstung,
+  Verbrauchsgüter, Upgrade-Stufen – pro Guardian, kein Singleton. Ausrüstung hat noch keine Werte.
+
+**Armor-Break**
+- Riesen haben `max_armor` 500 (`armor_integrity`, Anzeige im Label). Treffer gehen zuerst in die Rüstung.
+- Gepanzert: Elementar-Faktoren prallen ab (gesockelt 1,0×), reiner Stahl bricht mit `armor_break_multiplier`
+  1,5×. Gebrochen (`armor_broken`): gesockelte Spirits wieder mit vollem Säulen-Faktor, Stahl 1,0× (+15 % bei
+  High-Speed bleibt). Gilt auch für den Feld-Spirit (`SpiritRosterComponent.pillar_factor_against`).
+
+**OrganicTransitionTunnel (`scenes/organic_transition_tunnel.tscn`)**
+- 103 m lange 3D-S-Kurve: links/rechts ±11 m und steil auf 24 m hoch und wieder runter. Röhre = CSGPolygon3D
+  entlang Path3D minus längere Innenröhre (offene Enden, Innenwand komplett mit Collision), 6 Felsvorsprünge
+  an den Scheiteln (links, rechts, Decke) als Anker.
+- Loading Gate: Eintritt → `ResourceLoader.load_threaded_request` der anderen Seite; nach 35 % der Strecke
+  (erste große Biegung) wird das verlassene Areal entladen (`queue_free`) und dessen Barriere schließt;
+  bei `THREAD_LOAD_LOADED` dockt die Szene am Anker an und die Ausgangs-Barriere öffnet. Rückweg symmetrisch.
+- Feld-Spirit: neuer Notfall-Teleport, wenn er in `FOLLOW_PROTECT` 3 s weit weg feststeckt (z. B. vor der
+  Tunnel-Steigung, die er ohne Grapple nicht schafft).
+
+**Tests**
+- Neu: `tests/homebase_test.gd` (4 Stationen, F/ESC, Bewegung pausiert, alle 84 Altar-Kombinationen,
+  Duplikate abgelehnt, Truhe, Schmied, Händler, SafeZone) und `tests/tunnel_test.gd` (Länge, S-Kurve,
+  Wand-Collision, Barrieren, Laden/Entladen Höhle → Homebase → Höhle).
+- Spirit-System: Armor-Break 1,5× (Stahl vs. Feuer), Rüstung schluckt Schaden, Bruch-Signal, voller
+  Säulen-Vorteil danach. Alle Suites laden jetzt `world.tscn`; der Smoke-Test nimmt den Riesen die Rüstung ab.
+
 ### 2026-11-17 – Phase 2D: 5-s-Damage-Numbers, leere Waffe, Säulen-Nachteil, Höhlen-Arena
 **Damage Numbers (5,0 s)**
 - 0–0,1 s Overshoot-Pop (0,3 → 1,3 → 1,0 × Zielgröße), bis 3,5 s voll sichtbar mit langsamer Drift nach oben,

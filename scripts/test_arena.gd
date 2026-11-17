@@ -3,7 +3,8 @@ extends Node3D
 ##
 ## Innen das bisherige Layout (Tuerme, Waende, Allee, Plattformen). Drumherum:
 ##   - Hoehlenwaende + Decke auf CEILING_MULT x hoechster Turm (max_pillar_height),
-##     Boden 300 x 300 aus test_arena.tscn -> kein Herausfallen mehr.
+##     Boden 300 x 300 aus test_arena.tscn -> kein Herausfallen mehr. Einziger Ausgang:
+##     Tor in der +Z-Wand (DOOR_*) zum OrganicTransitionTunnel (Richtung Homebase).
 ##   - Stalagmiten (Boden), Stalaktiten (Decke, Anker fuer Decken-Schwuenge) und
 ##     durchgehende Mega-Saeulen Boden -> Decke (vertikale Katapult-Pfade).
 ##   - Drei Riesen fuer den Massstab: 1.0x NATURE, 1.4x ORDER, 2.0x CYCLE (Titan).
@@ -21,6 +22,9 @@ const SHELL_THICKNESS := 2.0
 const CEILING_MULT := 3.0
 const COL_SHELL := Color(0.55, 0.57, 0.62)
 const COL_ROCK := Color(0.8, 0.74, 0.66)
+## Tor in der +Z-Wand (Mitte x = 0, ab Boden) – passt zur Tunnel-Roehre (Radius 5).
+const DOOR_WIDTH := 10.0
+const DOOR_HEIGHT := 10.0
 
 ## Riesen: [name, position, groesse, saeule, anzeigename]
 const GIANTS := [
@@ -133,13 +137,25 @@ func _build_cave() -> void:
 	_shell.append({"pos": Vector3(0, h + t * 0.5, 0), "size": Vector3(span, t, span), "color": COL_SHELL})
 	for side in [-1.0, 1.0]:
 		_shell.append({"pos": Vector3(off * side, h * 0.5, 0), "size": Vector3(t, h, span), "color": COL_SHELL})
-		_shell.append({"pos": Vector3(0, h * 0.5, off * side), "size": Vector3(span, h, t), "color": COL_SHELL})
+	_shell.append({"pos": Vector3(0, h * 0.5, -off), "size": Vector3(span, h, t), "color": COL_SHELL})
+	_add_door_wall(off, h, t, span)
 	for m: Array in MEGA_PILLARS:
 		_add_cylinder(Vector3(m[0], h * 0.5, m[1]), m[2], h)
 	for s: Array in STALAGMITES:
 		_add_cylinder(Vector3(s[0], s[3] * 0.5, s[1]), s[2], s[3])
 	for s: Array in STALACTITES:
 		_add_cylinder(Vector3(s[0], h - s[3] * 0.5, s[1]), s[2], s[3])
+
+
+## +Z-Wand in drei Teilen um das Tunnel-Tor (links, rechts, Sturz darueber).
+func _add_door_wall(off: float, h: float, t: float, span: float) -> void:
+	var side_w := (span - DOOR_WIDTH) * 0.5
+	var side_x := (DOOR_WIDTH + side_w) * 0.5
+	for sx in [-1.0, 1.0]:
+		_shell.append({"pos": Vector3(side_x * sx, h * 0.5, off), "size": Vector3(side_w, h, t), "color": COL_SHELL})
+	var top_h := h - DOOR_HEIGHT
+	_shell.append({"pos": Vector3(0, DOOR_HEIGHT + top_h * 0.5, off),
+			"size": Vector3(DOOR_WIDTH, top_h, t), "color": COL_SHELL})
 
 
 func _add_cylinder(pos: Vector3, radius: float, height: float) -> void:

@@ -22,7 +22,7 @@ const CONTROLS := [
 	["Ziel waehlen", "hard_lock"], ["Trefferpunkt wechseln", "lock_next", "lock_prev"],
 	["Spirit aufs Feld", "field_spirit_1", "field_spirit_2", "field_spirit_3"],
 	["Waffen-Spirit wechseln", "cycle_weapon_spirit_prev", "cycle_weapon_spirit_next"],
-	["Kamera", "toggle_camera"], ["Reset", "reset"],
+	["Kamera", "toggle_camera"], ["Reset", "reset"], ["Station benutzen", "interact"],
 	["Steuerung ein/aus", "toggle_controls_overlay"],
 ]
 

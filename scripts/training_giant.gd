@@ -4,8 +4,11 @@ extends StaticBody3D
 ## Hard-Lock und Mausrad-Ziel-Wechsel. Baut Koerper, Kollision und Punkte selbst –
 ## size_scale skaliert Teile, Shapes und Punkte direkt (kein skalierter Physik-Body).
 ## Steht mit dem Gesicht in +Z. Hat eine Saeule (get_spirit_pillar) fuer Element-Faktoren.
+## Ruestung (armor_integrity): Treffer gehen zuerst in die Ruestung. Solange sie steht, prallen
+## Elementar-Faktoren ab (nur reiner Stahl bricht sie mit Bonus), danach "Armor-Broken".
 
 signal defeated
+signal armor_broken
 
 const FLASH_TIME := 0.15
 const DMG_SHOW_TIME := 1.5
@@ -20,11 +23,13 @@ const LABEL_HEIGHT := 15.0
 @export var size_scale := 1.0
 @export var pillar: SpiritData.Pillar = SpiritData.Pillar.NATURE
 @export var display_name := "RIESE"
+@export var max_armor := 500.0
 
 var hp := 3000.0
 var hits_taken := 0
 var last_damage := 0.0
 var last_point := ""
+var armor_integrity := 0.0
 
 var _mat: StandardMaterial3D
 var _label: Label3D
@@ -59,6 +64,7 @@ const POINTS := [
 
 func _ready() -> void:
 	hp = max_hp
+	armor_integrity = max_armor
 	_mat = StandardMaterial3D.new()
 	_mat.albedo_color = Color(0.75, 0.35, 0.35)
 	_mat.emission_enabled = true
@@ -119,6 +125,10 @@ func _add_lock_point(label: String, pos: Vector3, mult: float, part_name: String
 	part.add_child(lp)
 
 
+func is_armored() -> bool:
+	return armor_integrity > 0.0
+
+
 func get_spirit_pillar() -> SpiritData.Pillar:
 	return pillar
 
@@ -141,7 +151,11 @@ func take_hit(damage: float, _dir: Vector3, source: Node) -> void:
 	if _down_t > 0.0:
 		return
 	hits_taken += 1
-	hp -= damage
+	var absorbed := minf(damage, armor_integrity)
+	armor_integrity -= absorbed
+	if absorbed > 0.0 and armor_integrity <= 0.0:
+		armor_broken.emit()
+	hp -= damage - absorbed
 	last_damage = damage
 	last_point = ""
 	if source is GuardianController:
@@ -166,6 +180,7 @@ func _process(delta: float) -> void:
 		_down_t -= delta
 		if _down_t <= 0.0:
 			hp = max_hp
+			armor_integrity = max_armor
 			_set_visible(true)
 			_update_label()
 
@@ -177,6 +192,8 @@ func _set_visible(on: bool) -> void:
 
 func _update_label() -> void:
 	var t := "%s  %d" % [display_name, maxf(hp, 0.0)] if _down_t <= 0.0 else display_name + "  ..."
+	if is_armored() and _down_t <= 0.0:
+		t += "\nRUESTUNG %d" % armor_integrity
 	if _dmg_show > 0.0:
 		t += "\n-%d %s" % [last_damage, last_point]
 	_label.text = t

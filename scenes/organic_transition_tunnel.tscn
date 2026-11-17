@@ -1,0 +1,45 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/organic_transition_tunnel.gd" id="1_tunnel"]
+[ext_resource type="Shader" path="res://assets/shaders/proto_grid.gdshader" id="2_grid"]
+
+[sub_resource type="ShaderMaterial" id="RockMat"]
+shader = ExtResource("2_grid")
+shader_parameter/base_color = Color(0.5, 0.47, 0.44, 1)
+shader_parameter/cell_size = 3.0
+
+[node name="OrganicTransitionTunnel" type="Node3D"]
+script = ExtResource("1_tunnel")
+
+[node name="PathOuter" type="Path3D" parent="."]
+
+[node name="PathInner" type="Path3D" parent="."]
+
+[node name="Tube" type="CSGCombiner3D" parent="."]
+cast_shadow = 0
+use_collision = true
+
+[node name="Outer" type="CSGPolygon3D" parent="Tube"]
+polygon = PackedVector2Array(6.0, 0.0, 5.7956, 1.5529, 5.1962, 3.0, 4.2426, 4.2426, 3.0, 5.1962, 1.5529, 5.7956, 0.0, 6.0, -1.5529, 5.7956, -3.0, 5.1962, -4.2426, 4.2426, -5.1962, 3.0, -5.7956, 1.5529, -6.0, 0.0, -5.7956, -1.5529, -5.1962, -3.0, -4.2426, -4.2426, -3.0, -5.1962, -1.5529, -5.7956, -0.0, -6.0, 1.5529, -5.7956, 3.0, -5.1962, 4.2426, -4.2426, 5.1962, -3.0, 5.7956, -1.5529)
+mode = 2
+path_node = NodePath("../../PathOuter")
+path_interval = 2.0
+path_rotation = 2
+path_local = true
+material = SubResource("RockMat")
+
+[node name="Inner" type="CSGPolygon3D" parent="Tube"]
+operation = 2
+polygon = PackedVector2Array(5.0, 0.0, 4.8296, 1.2941, 4.3301, 2.5, 3.5355, 3.5355, 2.5, 4.3301, 1.2941, 4.8296, 0.0, 5.0, -1.2941, 4.8296, -2.5, 4.3301, -3.5355, 3.5355, -4.3301, 2.5, -4.8296, 1.2941, -5.0, 0.0, -4.8296, -1.2941, -4.3301, -2.5, -3.5355, -3.5355, -2.5, -4.3301, -1.2941, -4.8296, -0.0, -5.0, 1.2941, -4.8296, 2.5, -4.3301, 3.5355, -3.5355, 4.3301, -2.5, 4.8296, -1.2941)
+mode = 2
+path_node = NodePath("../../PathInner")
+path_interval = 2.0
+path_rotation = 2
+path_local = true
+material = SubResource("RockMat")
+
+[node name="EntryAnchor" type="Marker3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -5, -150)
+
+[node name="ExitAnchor" type="Marker3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -5, 83)

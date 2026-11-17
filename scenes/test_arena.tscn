@@ -1,37 +1,7 @@
 [gd_scene format=3]
 
 [ext_resource type="Script" path="res://scripts/test_arena.gd" id="1_arena"]
-[ext_resource type="Script" path="res://scripts/guardian_controller.gd" id="2_guardian"]
-[ext_resource type="Script" path="res://scripts/debug_hud.gd" id="3_hud"]
 [ext_resource type="Shader" path="res://assets/shaders/proto_grid.gdshader" id="4_grid"]
-[ext_resource type="Script" path="res://scripts/knife_combat.gd" id="5_knife"]
-[ext_resource type="Script" path="res://scripts/health_component.gd" id="6_health"]
-[ext_resource type="Script" path="res://scripts/spirits/spirit_roster_component.gd" id="7_roster"]
-[ext_resource type="Resource" path="res://data/spirits/fire.tres" id="8_fire"]
-[ext_resource type="Resource" path="res://data/spirits/light.tres" id="9_light"]
-[ext_resource type="Resource" path="res://data/spirits/life.tres" id="10_life"]
-[ext_resource type="PackedScene" path="res://scenes/spirits/spirit_entity.tscn" id="11_spirit"]
-[ext_resource type="PackedScene" path="res://scenes/ui/minimal_hud.tscn" id="12_minhud"]
-[ext_resource type="Script" path="res://scripts/ui/damage_number_manager.gd" id="13_dmgnum"]
-
-[sub_resource type="ProceduralSkyMaterial" id="SkyMat"]
-sky_top_color = Color(0.32, 0.5, 0.78, 1)
-sky_horizon_color = Color(0.72, 0.78, 0.86, 1)
-ground_horizon_color = Color(0.72, 0.78, 0.86, 1)
-ground_bottom_color = Color(0.25, 0.27, 0.3, 1)
-
-[sub_resource type="Sky" id="Sky"]
-sky_material = SubResource("SkyMat")
-
-[sub_resource type="Environment" id="Env"]
-background_mode = 2
-sky = SubResource("Sky")
-ambient_light_source = 3
-tonemap_mode = 2
-glow_enabled = true
-fog_enabled = true
-fog_light_color = Color(0.72, 0.78, 0.86, 1)
-fog_density = 0.0025
 
 [sub_resource type="ShaderMaterial" id="FloorMat"]
 shader = ExtResource("4_grid")
@@ -45,55 +15,8 @@ size = Vector3(300, 1, 300)
 [sub_resource type="BoxShape3D" id="FloorShape"]
 size = Vector3(300, 1, 300)
 
-[sub_resource type="CapsuleShape3D" id="GuardianShape"]
-radius = 0.4
-height = 1.8
-
-[sub_resource type="StandardMaterial3D" id="GuardianMat"]
-albedo_color = Color(0.2, 0.7, 1, 1)
-emission_enabled = true
-emission = Color(0.05, 0.3, 0.5, 1)
-
-[sub_resource type="CapsuleMesh" id="GuardianMesh"]
-material = SubResource("GuardianMat")
-radius = 0.4
-height = 1.8
-
-[sub_resource type="StandardMaterial3D" id="VisorMat"]
-albedo_color = Color(1, 0.85, 0.3, 1)
-emission_enabled = true
-emission = Color(1, 0.7, 0.2, 1)
-
-[sub_resource type="BoxMesh" id="VisorMesh"]
-material = SubResource("VisorMat")
-size = Vector3(0.5, 0.15, 0.2)
-
-[sub_resource type="StandardMaterial3D" id="BladeMat"]
-albedo_color = Color(0.85, 0.88, 0.92, 1)
-metallic = 0.9
-roughness = 0.25
-
-[sub_resource type="BoxMesh" id="BladeMesh"]
-material = SubResource("BladeMat")
-size = Vector3(0.05, 0.12, 0.6)
-
-[sub_resource type="BoxMesh" id="ViewBladeMesh"]
-material = SubResource("BladeMat")
-size = Vector3(0.025, 0.06, 0.32)
-
-[sub_resource type="SphereShape3D" id="CamProbe"]
-radius = 0.25
-
 [node name="TestArena" type="Node3D"]
 script = ExtResource("1_arena")
-
-[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
-environment = SubResource("Env")
-
-[node name="Sun" type="DirectionalLight3D" parent="."]
-rotation = Vector3(-0.95, 0.6, 0)
-shadow_enabled = true
-directional_shadow_max_distance = 150.0
 
 [node name="Floor" type="StaticBody3D" parent="."]
 position = Vector3(0, -0.5, 0)
@@ -103,75 +26,3 @@ mesh = SubResource("FloorMesh")
 
 [node name="Shape" type="CollisionShape3D" parent="Floor"]
 shape = SubResource("FloorShape")
-
-[node name="Guardian" type="CharacterBody3D" parent="."]
-position = Vector3(0, 1.2, 0)
-floor_snap_length = 0.3
-script = ExtResource("2_guardian")
-
-[node name="Collision" type="CollisionShape3D" parent="Guardian"]
-shape = SubResource("GuardianShape")
-
-[node name="Visual" type="Node3D" parent="Guardian"]
-
-[node name="Body" type="MeshInstance3D" parent="Guardian/Visual"]
-mesh = SubResource("GuardianMesh")
-
-[node name="Visor" type="MeshInstance3D" parent="Guardian/Visual"]
-position = Vector3(0, 0.5, -0.35)
-mesh = SubResource("VisorMesh")
-
-[node name="KnifePivot" type="Node3D" parent="Guardian/Visual"]
-position = Vector3(0, 0.15, 0)
-
-[node name="Blade" type="MeshInstance3D" parent="Guardian/Visual/KnifePivot"]
-position = Vector3(0.45, 0, -0.55)
-mesh = SubResource("BladeMesh")
-
-[node name="Knife" type="Node" parent="Guardian"]
-script = ExtResource("5_knife")
-
-[node name="Health" type="Node" parent="Guardian"]
-script = ExtResource("6_health")
-
-[node name="SpiritRoster" type="Node" parent="Guardian"]
-script = ExtResource("7_roster")
-spirits = Array[Resource]([ExtResource("8_fire"), ExtResource("9_light"), ExtResource("10_life")])
-
-[node name="SpiritEntity" parent="Guardian" instance=ExtResource("11_spirit")]
-
-[node name="CameraRig" type="Node3D" parent="Guardian"]
-
-[node name="Pitch" type="Node3D" parent="Guardian/CameraRig"]
-
-[node name="SpringArm3D" type="SpringArm3D" parent="Guardian/CameraRig/Pitch"]
-position = Vector3(0.6, 0, 0)
-shape = SubResource("CamProbe")
-spring_length = 4.5
-margin = 0.1
-
-[node name="Camera3D" type="Camera3D" parent="Guardian/CameraRig/Pitch/SpringArm3D"]
-current = true
-fov = 75.0
-far = 1000.0
-
-[node name="ViewKnife" type="Node3D" parent="Guardian/CameraRig/Pitch/SpringArm3D/Camera3D"]
-position = Vector3(0.28, -0.3, -0.45)
-
-[node name="Blade" type="MeshInstance3D" parent="Guardian/CameraRig/Pitch/SpringArm3D/Camera3D/ViewKnife"]
-position = Vector3(0, 0, -0.2)
-cast_shadow = 0
-mesh = SubResource("ViewBladeMesh")
-
-[node name="HUD" type="CanvasLayer" parent="."]
-script = ExtResource("3_hud")
-guardian_path = NodePath("../Guardian")
-
-[node name="MinimalHUD" parent="." instance=ExtResource("12_minhud")]
-guardian_path = NodePath("../Guardian")
-
-[node name="DamageNumbers" type="CanvasLayer" parent="."]
-layer = 3
-script = ExtResource("13_dmgnum")
-guardian_path = NodePath("../Guardian")
-spirit_path = NodePath("../Guardian/SpiritEntity")

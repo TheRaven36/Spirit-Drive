@@ -209,8 +209,11 @@ const ROPE_COLOR_TURBO := Color(1.0, 0.8, 0.3)
 ## Optionale Komponenten (Coop-ready: pro Guardian, keine Singletons).
 @onready var health: HealthComponent = get_node_or_null("Health") as HealthComponent
 @onready var spirit_roster: SpiritRosterComponent = get_node_or_null("SpiritRoster") as SpiritRosterComponent
+@onready var progress: GuardianProgress = get_node_or_null("Progress") as GuardianProgress
 
 var state: State = State.NORMAL
+## true = Stations-Fenster offen (set_controls_locked).
+var controls_locked := false
 var first_person := false
 
 ## Auto-Aim-Ergebnis (unsichtbar, nur fuer den Grapple).
@@ -297,6 +300,8 @@ func _ready() -> void:
 # Input
 # =========================================================================
 func _unhandled_input(event: InputEvent) -> void:
+	if controls_locked:
+		return
 	if event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
 		_turn_camera(event.relative * mouse_sensitivity)
 	elif event.is_action_pressed("toggle_camera"):
@@ -340,6 +345,24 @@ func aim_forward() -> Vector3:
 	return -camera.global_basis.z
 
 
+## Stations-Fenster offen: Bewegung + Kamera pausiert, Maus frei, Spirit-Tasten aus.
+func set_controls_locked(on: bool) -> void:
+	controls_locked = on
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE if on else Input.MOUSE_MODE_CAPTURED
+	if spirit_roster:
+		spirit_roster.input_enabled = not on
+
+
+## Gesperrt: nur auslaufen lassen + Schwerkraft (kein Input).
+func _process_locked(delta: float) -> void:
+	_release_all_hooks()
+	velocity.x = move_toward(velocity.x, 0.0, ground_accel * delta)
+	velocity.z = move_toward(velocity.z, 0.0, ground_accel * delta)
+	if not is_on_floor():
+		velocity.y -= gravity * delta
+	move_and_slide()
+
+
 ## Mindestens ein gespanntes Seil (lockere Seile im Doppel-Tap-Fenster zaehlen nicht).
 func any_hook_active() -> bool:
 	return hooks.any(func(h: GrappleHook) -> bool: return h.active and not h.slack)
@@ -353,6 +376,9 @@ func hooks_out() -> int:
 # Physics
 # =========================================================================
 func _physics_process(delta: float) -> void:
+	if controls_locked:
+		_process_locked(delta)
+		return
 	_tick_timers(delta)
 	_update_aim()
 	var wish := _wish_dir()

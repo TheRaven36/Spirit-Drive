@@ -6,7 +6,10 @@ Ablauf, Branches, Release und Checks: [docs/WORKFLOW.md](docs/WORKFLOW.md) – g
 
 ## Projektstruktur
 ```
-scenes/test_arena.tscn      Hauptszene (F5)
+scenes/world.tscn           Hauptszene (F5): Guardian, HUDs, Licht + Areas (Hoehle, Tunnel)
+scenes/test_arena.tscn      Hoehlen-Arena (Areal, wird vom Tunnel ent-/geladen)
+scenes/homebase_outpost.tscn  Homebase-Prefab: SafeZone + 4 Stationen
+scenes/organic_transition_tunnel.tscn  3D-Grapple-Tunnel mit asynchronem Loading Gate
 scenes/props/               Einzelne Props/Gegner-Szenen (training_dummy.tscn)
 scenes/spirits/spirit_entity.tscn  Feld-Spirit (Greybox-Kapsel, Hitbox)
 scenes/ui/minimal_hud.tscn  Minimal-HUD (HP, Haken, Spirit-Slots, Steuerungs-Overlay auf +)
@@ -21,6 +24,10 @@ scripts/
   lock_reticle.gd           Hard-Lock-Rahmen (HUD)
   debug_hud.gd              Fadenkreuz + Debug-Werte (oben rechts)
   health_component.gd       Lebenspunkte (Komponente, Signal health_changed)
+  guardian_progress.gd      Besitz/Fortschritt (Material, Rucksack, Truhe, Ausruestung, Upgrades)
+  organic_transition_tunnel.gd  Tunnel: CSG-Roehre, Anker, Barrieren, load_threaded_request
+  homebase/                 HomebaseOutpost, InteractionStation (F/ESC) + StationWindow,
+                            SpiritAltar, EquipmentStash, ForgeStation, MerchantStation
   spirits/                  SpiritData (Resource), SpiritLibrary, SpiritRosterComponent (3er-Roster,
                             Feld 1/2/3, Waffen-Sockel Q/E, Saeulen-Vorteil), SpiritEntity (Feld-Spirit-KI)
   ui/                       MinimalHUD + Widgets (HookIndicator, SpiritSlot),
@@ -34,6 +41,8 @@ assets/shaders|models|textures
 tests/movement_smoke_test.gd  Headless-Smoke-Test (Exit-Code 0 = ok)
 tests/spirit_system_test.gd   Spirit-System + Minimal-HUD (Exit-Code 0 = ok)
 tests/spirit_entity_test.gd   Feld-Spirit-KI: Follow, Bodyguard, Hard-Lock-Befehl (Exit-Code 0 = ok)
+tests/homebase_test.gd        Homebase: Stationen, Interaktion, Altar-Kombinationen, SafeZone
+tests/tunnel_test.gd          Tunnel: Geometrie, asynchrones Laden/Entladen in beide Richtungen
 tools/, start_game.bat      Windows-Start + UID-Konflikt-Fix
 docs/WORKFLOW.md, docs/PATCHNOTES.md
 ```
@@ -60,8 +69,8 @@ docs/WORKFLOW.md, docs/PATCHNOTES.md
 
 ## Vor jedem Commit
 1. `godot --headless --path . --import` und erzeugte `.uid`-Dateien mitcommitten.
-2. `godot --headless --path . --script res://tests/movement_smoke_test.gd` und
-   `... res://tests/spirit_system_test.gd` und `... res://tests/spirit_entity_test.gd`
-   muessen Exit-Code 0 liefern.
+2. Alle Suites in `tests/` muessen Exit-Code 0 liefern:
+   `godot --headless --path . --script res://tests/<suite>.gd` fuer movement_smoke_test,
+   spirit_system_test, spirit_entity_test, homebase_test, tunnel_test.
 3. Eintrag in `docs/PATCHNOTES.md` (neueste oben).
 4. Nur auf `Robin-Branch` committen und pushen; `main` nur nach Robins Freigabe.

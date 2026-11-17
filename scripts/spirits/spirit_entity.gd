@@ -9,7 +9,10 @@ extends CharacterBody3D
 ##   - Leine:       Das Fokus-Ziel gilt nur, solange es in Grapple-Reichweite des Guardians liegt
 ##                  (Lock-Rahmen farbig). Grau = Spirit laeuft physisch zum Guardian zurueck und
 ##                  greift wieder an, sobald das Ziel zurueck in Reichweite ist. Kein Teleport –
-##                  ausser als Notfall (> emergency_teleport_distance oder unter die Map gefallen).
+##                  ausser als Notfall (> emergency_teleport_distance, unter die Map gefallen oder
+##                  im FOLLOW_PROTECT stuck_time lang festgesteckt – z. B. vor einer Tunnel-Steigung).
+##   - SafeZone:    Steht der Guardian in einer Area3D der Gruppe "safe_zone" (Homebase), bleibt
+##                  der Spirit strikt in FOLLOW_PROTECT (kein Fokus-Ziel, kein Bodyguard).
 ##
 ## State-Machine:
 ##   FOLLOW_PROTECT  folgt dem Guardian am Boden (follow_min..follow_max Abstand). Bodyguard:
@@ -36,6 +39,10 @@ enum State { FOLLOW_PROTECT, CHASE, ATTACK }
 @export var turn_speed := 10.0
 ## Nur Notfall: weiter weg (oder unter die Map gefallen) = neben den Guardian versetzen.
 @export var emergency_teleport_distance := 150.0
+## Notfall: so lange (s) im FOLLOW_PROTECT weit weg und kaum bewegt -> neben den Guardian.
+@export var stuck_time := 3.0
+## "Weit weg" fuer die Festgesteckt-Pruefung (m).
+@export var stuck_distance := 18.0
 @export var spawn_offset := Vector3(4.5, 0.0, 1.0)
 
 @export_group("Follow / Protect")
@@ -72,6 +79,8 @@ var _mat := StandardMaterial3D.new()
 var _attack_cd := 0.0
 var _lunge_t := 0.0
 var _hit_this_lunge: Dictionary = {}
+var _stuck_t := 0.0
+var _stuck_from := Vector3.ZERO
 
 @onready var _visual: Node3D = $Visual
 @onready var _hitbox: Area3D = $Hitbox
@@ -117,6 +126,8 @@ func _on_hard_lock_changed(target: Node3D) -> void:
 ## Aktuelles Ziel: Fokus-Befehl hat Vorrang (nur in Grapple-Reichweite des Guardians,
 ## sonst Rueckweg zum Guardian), ohne Befehl Bodyguard.
 func current_target() -> Node3D:
+	if guardian_in_safe_zone():
+		return null
 	if _valid(combat_target):
 		return combat_target if _guardian.hard_lock_in_range() else null
 	return guard_target if _valid(guard_target) else null
@@ -127,7 +138,7 @@ func _physics_process(delta: float) -> void:
 		return
 	_attack_cd -= delta
 	if _guardian.global_position.distance_to(global_position) > emergency_teleport_distance \
-			or global_position.y < GuardianController.RESPAWN_Y:
+			or global_position.y < GuardianController.RESPAWN_Y or _is_stuck(delta):
 		_place_next_to_guardian()
 	_update_guard_target()
 	var t := current_target()
@@ -208,9 +219,7 @@ func _hit_position(receiver: Node) -> Vector3:
 
 
 func _deal_hit(receiver: Node, hit_pos: Vector3) -> void:
-	var mult := 1.0
-	if receiver.has_method("get_spirit_pillar"):
-		mult = SpiritRosterComponent.pillar_multiplier(spirit.pillar, receiver.get_spirit_pillar())
+	var mult := SpiritRosterComponent.pillar_factor_against(spirit.pillar, receiver)
 	var dmg := base_damage * mult
 	receiver.take_hit(dmg, -global_basis.z, self)
 	hits_dealt += 1
@@ -223,7 +232,8 @@ func _deal_hit(receiver: Node, hit_pos: Vector3) -> void:
 ## Bodyguard: naechsten Gegner im guard_radius um den Guardian waehlen,
 ## loslassen sobald er weiter als guard_release_radius weg ist.
 func _update_guard_target() -> void:
-	if _valid(combat_target):
+	if _valid(combat_target) or guardian_in_safe_zone():
+		guard_target = null
 		return
 	var gp := _guardian.global_position
 	if _valid(guard_target) and gp.distance_to(_target_point(guard_target)) <= guard_release_radius:
@@ -235,6 +245,24 @@ func _update_guard_target() -> void:
 		if d <= best:
 			best = d
 			guard_target = t
+
+
+func guardian_in_safe_zone() -> bool:
+	for z in get_tree().get_nodes_in_group("safe_zone"):
+		if (z as Area3D).overlaps_body(_guardian):
+			return true
+	return false
+
+
+## Notfall-Erkennung: im FOLLOW_PROTECT weit vom Guardian und seit stuck_time kaum bewegt.
+func _is_stuck(delta: float) -> bool:
+	if state != State.FOLLOW_PROTECT or global_position.distance_to(_guardian.global_position) < stuck_distance \
+			or global_position.distance_to(_stuck_from) > follow_min:
+		_stuck_t = 0.0
+		_stuck_from = global_position
+		return false
+	_stuck_t += delta
+	return _stuck_t >= stuck_time
 
 
 func _valid(t: Node3D) -> bool:
@@ -281,6 +309,7 @@ func _flat_dist(p: Vector3) -> float:
 
 
 func _place_next_to_guardian() -> void:
+	_stuck_t = 0.0
 	global_position = _guardian.global_position + Basis(Vector3.UP, _guardian._yaw) * spawn_offset
 	velocity = Vector3.ZERO
 	reset_physics_interpolation()

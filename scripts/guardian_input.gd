@@ -21,6 +21,7 @@ extends RefCounted
 ##   1 / 2 / 3 .......... field_spirit_1..3  (Spirit aus dem Roster aufs Feld)
 ##   Q / LB, E / RB ..... cycle_weapon_spirit_prev / _next (Waffen-Sockel wechseln)
 ##   + / Num+ ........... toggle_controls_overlay (Tastenbelegung ein/aus)
+##   F / Y .............. interact (Homebase-Stationen oeffnen/schliessen)
 
 const DEADZONE := 0.2
 
@@ -50,6 +51,7 @@ const BINDINGS := {
 	"cycle_weapon_spirit_next": [["key", KEY_E], ["joy", JOY_BUTTON_RIGHT_SHOULDER]],
 	# "+" ueber das Tasten-Label (Layout-unabhaengig: DE-Plus-Taste) + Ziffernblock.
 	"toggle_controls_overlay": [["label", KEY_PLUS], ["key", KEY_KP_ADD]],
+	"interact": [["key", KEY_F], ["joy", JOY_BUTTON_Y]],
 }
 
 
