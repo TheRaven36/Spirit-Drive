@@ -45,6 +45,7 @@ godot --headless --path . --script res://tests/tunnel_test.gd
 ## Lokal starten (Windows)
 - Der lokale Klon steht auf `Robin-Branch`. Im Klon nichts von Hand ändern.
 - `start_game.bat` holt per `git pull --ff-only` den aktuellen Stand und öffnet das Projekt in Godot.
+  Vorher verwirft es lokale Editor-Änderungen an `project.godot` (Godot schreibt die Datei beim Öffnen um).
   Beim ersten Start fragt es einmal nach dem Pfad zur Godot-EXE und merkt ihn sich in
   `godot_path.local` (nicht im Repo).
 - Einmal pro Klon: `git config core.hooksPath hooks` (sobald ein `hooks/`-Ordner existiert).

@@ -4,6 +4,11 @@ Neueste Einträge immer oben.
 
 ## Unreleased
 
+### 2026-11-17 – Fix: start_game.bat bricht bei lokal umgeschriebener project.godot ab
+- Der Godot-Editor schreibt `project.godot` lokal um; ändert ein Commit dieselbe Datei (Phase 3A: Hauptszene
+  `world.tscn`), scheiterte `git pull`. `start_game.bat` setzt `project.godot` jetzt vor jedem Pull auf den
+  Repo-Stand zurück (im Spiel-Klon wird nichts von Hand geändert).
+
 ### 2026-11-17 – Phase 3A: Homebase, Armor-Break-Stahl, 3D-Grapple-Tunnel
 **Neue Szenen-Struktur**
 - Hauptszene ist jetzt `scenes/world.tscn` (Guardian, HUDs, Licht, Umgebung + `Areas`). `test_arena.tscn`

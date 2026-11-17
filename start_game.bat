@@ -3,6 +3,9 @@ setlocal
 cd /d "%~dp0"
 
 echo [Spirit Drive] Hole aktuellen Stand von Robin-Branch ...
+rem Der Godot-Editor schreibt project.godot beim Oeffnen/Speichern lokal um. Im Spiel-Klon
+rem gilt immer der Repo-Stand -> lokale Editor-Aenderungen vor dem Pull verwerfen.
+git checkout -- project.godot 2>nul
 git pull --ff-only
 if errorlevel 1 call "%~dp0tools\fix_uid_conflicts.bat"
 if errorlevel 1 (
