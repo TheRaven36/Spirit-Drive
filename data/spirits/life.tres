@@ -1,0 +1,11 @@
+[gd_resource type="Resource" script_class="SpiritData" format=3]
+
+[ext_resource type="Script" path="res://scripts/spirits/spirit_data.gd" id="1_spirit"]
+
+[resource]
+script = ExtResource("1_spirit")
+spirit_name = "Leben"
+pillar = 2
+element = 6
+theme_color = Color(0.08, 0.78, 0.45, 1)
+special_effect_tag = "lifesteal"

@@ -5,6 +5,13 @@
 [ext_resource type="Script" path="res://scripts/debug_hud.gd" id="3_hud"]
 [ext_resource type="Shader" path="res://assets/shaders/proto_grid.gdshader" id="4_grid"]
 [ext_resource type="Script" path="res://scripts/knife_combat.gd" id="5_knife"]
+[ext_resource type="Script" path="res://scripts/health_component.gd" id="6_health"]
+[ext_resource type="Script" path="res://scripts/spirits/spirit_roster_component.gd" id="7_roster"]
+[ext_resource type="Resource" path="res://data/spirits/fire.tres" id="8_fire"]
+[ext_resource type="Resource" path="res://data/spirits/light.tres" id="9_light"]
+[ext_resource type="Resource" path="res://data/spirits/life.tres" id="10_life"]
+[ext_resource type="Script" path="res://scripts/spirits/spirit_field_avatar.gd" id="11_avatar"]
+[ext_resource type="PackedScene" path="res://scenes/ui/minimal_hud.tscn" id="12_minhud"]
 
 [sub_resource type="ProceduralSkyMaterial" id="SkyMat"]
 sky_top_color = Color(0.32, 0.5, 0.78, 1)
@@ -123,6 +130,17 @@ mesh = SubResource("BladeMesh")
 [node name="Knife" type="Node" parent="Guardian"]
 script = ExtResource("5_knife")
 
+[node name="Health" type="Node" parent="Guardian"]
+script = ExtResource("6_health")
+
+[node name="SpiritRoster" type="Node" parent="Guardian"]
+script = ExtResource("7_roster")
+spirits = Array[Resource]([ExtResource("8_fire"), ExtResource("9_light"), ExtResource("10_life")])
+
+[node name="SpiritAvatar" type="Node3D" parent="Guardian"]
+script = ExtResource("11_avatar")
+roster_path = NodePath("../SpiritRoster")
+
 [node name="CameraRig" type="Node3D" parent="Guardian"]
 
 [node name="Pitch" type="Node3D" parent="Guardian/CameraRig"]
@@ -148,4 +166,7 @@ mesh = SubResource("ViewBladeMesh")
 
 [node name="HUD" type="CanvasLayer" parent="."]
 script = ExtResource("3_hud")
+guardian_path = NodePath("../Guardian")
+
+[node name="MinimalHUD" parent="." instance=ExtResource("12_minhud")]
 guardian_path = NodePath("../Guardian")

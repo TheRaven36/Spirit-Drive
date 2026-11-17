@@ -9,6 +9,10 @@ extends RefCounted
 ## Kette: anchor -> bends[0] -> bends[1] -> ... -> Spieler.
 ## Der letzte Knickpunkt ist der aktuelle physikalische Pivot.
 
+## Signale fuer HUD/FX: Haken abgefeuert bzw. eingeholt (danach laeuft der Cooldown).
+signal fired(hook: GrappleHook)
+signal released(hook: GrappleHook)
+
 enum Kind { HIP_LEFT, HIP_RIGHT }
 
 const BEND_OFFSET := 0.12   # Knickpunkt leicht von der Kante weg
@@ -30,6 +34,9 @@ var bends: Array[Vector3] = []
 var rope_length := 0.0      # freie Laenge vom Pivot zum Spieler
 var pull := Vector3.ZERO    # Zugkraft dieser Winde im letzten Frame (m/s²)
 var attach_height := 0.0
+## Nachlade-Zeit des Werfers nach dem Einholen (s) – setzt der GuardianController.
+var cooldown_time := 0.0
+var cooldown_left := 0.0
 
 var _bend_lengths: Array[float] = []
 var _bend_planes: Array[Vector3] = []   # Normale * Seite der Wickel-Ebene
@@ -43,6 +50,7 @@ func attach(point: Vector3, surface_normal: Vector3, hit_target: Node3D, player_
 		is_combat := false) -> void:
 	active = true
 	slack = false
+	cooldown_left = 0.0
 	combat = is_combat
 	normal = surface_normal
 	target = hit_target
@@ -53,9 +61,11 @@ func attach(point: Vector3, surface_normal: Vector3, hit_target: Node3D, player_
 	_bend_planes.clear()
 	rope_length = player_pos.distance_to(point)
 	attach_height = player_pos.y
+	fired.emit(self)
 
 
 func release() -> void:
+	var was_active := active
 	pull = Vector3.ZERO
 	active = false
 	slack = false
@@ -64,6 +74,28 @@ func release() -> void:
 	bends.clear()
 	_bend_lengths.clear()
 	_bend_planes.clear()
+	if was_active:
+		cooldown_left = cooldown_time
+		released.emit(self)
+
+
+## Cooldown runterzaehlen (vom Controller pro Physik-Frame aufgerufen).
+func tick(delta: float) -> void:
+	cooldown_left = maxf(cooldown_left - delta, 0.0)
+
+
+## Frei und nachgeladen -> kann feuern.
+func is_ready() -> bool:
+	return not active and cooldown_left <= 0.0
+
+
+## 0 = gerade eingeholt / abgefeuert, 1 = bereit (fuer HUD-Fuellstand).
+func ready_ratio() -> float:
+	if active:
+		return 0.0
+	if cooldown_time <= 0.0:
+		return 1.0
+	return 1.0 - clampf(cooldown_left / cooldown_time, 0.0, 1.0)
 
 
 func anchor_world() -> Vector3:

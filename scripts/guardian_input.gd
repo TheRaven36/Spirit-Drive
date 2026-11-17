@@ -16,6 +16,9 @@ extends RefCounted
 ##   Space / A .......... jump
 ##   P / View ........... toggle_camera (First-/Third-Person)
 ##   R / Menu ........... reset
+##   1 / 2 / 3 .......... field_spirit_1..3  (Spirit aus dem Roster aufs Feld)
+##   Q / LB, E / RB ..... cycle_weapon_spirit_prev / _next (Waffen-Sockel wechseln)
+##   + / Num+ ........... toggle_controls_overlay (Tastenbelegung ein/aus)
 
 const DEADZONE := 0.2
 
@@ -38,6 +41,13 @@ const BINDINGS := {
 	"lock_prev": [["mouse", MOUSE_BUTTON_WHEEL_UP], ["joy", JOY_BUTTON_DPAD_LEFT]],
 	"toggle_camera": [["key", KEY_P], ["joy", JOY_BUTTON_BACK]],
 	"reset": [["key", KEY_R], ["joy", JOY_BUTTON_START]],
+	"field_spirit_1": [["key", KEY_1]],
+	"field_spirit_2": [["key", KEY_2]],
+	"field_spirit_3": [["key", KEY_3]],
+	"cycle_weapon_spirit_prev": [["key", KEY_Q], ["joy", JOY_BUTTON_LEFT_SHOULDER]],
+	"cycle_weapon_spirit_next": [["key", KEY_E], ["joy", JOY_BUTTON_RIGHT_SHOULDER]],
+	# "+" ueber das Tasten-Label (Layout-unabhaengig: DE-Plus-Taste) + Ziffernblock.
+	"toggle_controls_overlay": [["label", KEY_PLUS], ["key", KEY_KP_ADD]],
 }
 
 
@@ -56,6 +66,10 @@ static func _make_event(b: Array) -> InputEvent:
 			var k := InputEventKey.new()
 			k.physical_keycode = b[1]
 			return k
+		"label":
+			var kl := InputEventKey.new()
+			kl.keycode = b[1]
+			return kl
 		"mouse":
 			var m := InputEventMouseButton.new()
 			m.button_index = b[1]

@@ -2,6 +2,45 @@
 
 Neueste Einträge immer oben.
 
+## Unreleased
+
+### 2026-11-17 – Phase 2A: 9 Spirits, 3er-Roster & Minimal-HUD
+**Spirit-Daten**
+- Neue Resource `SpiritData` (`scripts/spirits/spirit_data.gd`): Name, Säule (`NATURE/ORDER/CYCLE`),
+  Element (9), Evolutionsstufe (`CORE` … `GOD`, Standard `CORE`), `theme_color`, `weapon_damage_multiplier`
+  (1,0), `special_effect_tag`.
+- 9 Basis-Spirits unter `res://data/spirits/` (Zugriff über `SpiritLibrary`):
+  Nature: Feuer (rot, `burn`), Wasser (cyan, `slow`), Erde (ocker, `stagger`) ·
+  Order: Licht (gold, `blind`), Schatten (dunkelviolett, `crit_dive`), Schwerkraft (magenta, `pull_down`) ·
+  Cycle: Leben (smaragd, `lifesteal`), Zeit (hellblau-silber, `echo_hit`), Tod (giftgrün-grau, `armor_decay`).
+
+**3er-Roster (`SpiritRosterComponent`, Kind „SpiritRoster“ am Guardian)**
+- Genau 3 Spirits aus den 9 (`set_roster()`), Start-Roster in der Test-Arena: Feuer, Licht, Leben.
+- **1 / 2 / 3** schickt den Spirit aufs Feld (`field_spirit_changed`), Greybox-Avatar (leuchtende Kugel)
+  folgt dem Guardian in der Spirit-Farbe.
+- **Q / E** (Controller LB / RB) wechselt den Waffen-Sockel zyklisch (`weapon_spirit_changed`): Klinge glüht
+  in der Spirit-Farbe, kurzer Slash-Trail in derselben Farbe, jeder Treffer trägt `element` + `effect_tag`.
+- Schere-Stein-Papier: `pillar_multiplier()` NATURE > ORDER > CYCLE > NATURE = 1,5×, sonst 1,0×. Greift im
+  Messer-Schaden automatisch bei Zielen mit `get_spirit_pillar()` (Dummies/Riese haben noch keine Säule).
+- Coop-ready: keine Singletons; jede Komponente hängt an ihrem Guardian, Verbraucher binden sich per Signal.
+
+**Minimal-HUD (`scenes/ui/minimal_hud.tscn`)**
+- Oben links: HP-Balken (neue `HealthComponent` am Guardian) + Haken-Indikatoren L/R: abgefeuert = ausgegraut,
+  danach Füllstand von unten bis bereit (kurzer Aufblitz), Combat-Seil = oranger Rand.
+- Unten links: 3 Spirit-Slots in `theme_color` – Feld-Spirit mit Glow-Rahmen, Waffen-Spirit mit hellem Kern
+  + Klingen-Symbol, Reserve gedimmt. Kein Text.
+- **+ / Num+** blendet ein halbtransparentes Steuerungs-Overlay ein/aus (Tasten live aus der InputMap).
+- Debug-HUD entschlackt: Hilfetext und Haken-Text entfernt (→ Overlay/Indikatoren), Debug-Werte oben rechts.
+
+**Grapple**
+- Hüft-Werfer haben einen kurzen Nachlade-Cooldown (`hook_cooldown` 0,3 s) nach dem Einholen; die andere Hüfte
+  bleibt frei. Neue Signale `GuardianController.hook_fired / hook_released` (bzw. `GrappleHook.fired / released`).
+
+**Tests**
+- Neu: `tests/spirit_system_test.gd` (Ressourcen, Säulen-Matrix, 1/2/3 + Q/E per echtem Tastendruck inkl.
+  Signale, Waffen-Element im Treffer, HUD-Slots/Haken/HP/Overlay).
+- Smoke-Test: Doppel-Tap-Gameplay-Check wartet jetzt den Werfer-Cooldown ab.
+
 ## v0.9 – Release 2026-11-16
 
 ### 2026-11-16 – Dual-Hooks: echte Kraft-Vektorsumme v0.9

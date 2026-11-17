@@ -33,6 +33,8 @@ nächste `git pull` bricht ab. `tests/*.uid` sind ausgenommen (gitignored).
 godot --headless --path . --import
 # Movement-Smoke-Test (Exit-Code 0 = ok)
 godot --headless --path . --script res://tests/movement_smoke_test.gd
+# Spirit-System + Minimal-HUD (Exit-Code 0 = ok)
+godot --headless --path . --script res://tests/spirit_system_test.gd
 ```
 
 ## Lokal starten (Windows)
@@ -45,7 +47,11 @@ godot --headless --path . --script res://tests/movement_smoke_test.gd
 ## Projektstruktur
 ```
 scenes/          Szenen (.tscn); scenes/areas/ = streamfähige Areale
-scripts/         GDScript-Logik (Guardian, später Spirits, Injects, Mobs …)
+scenes/ui/       HUD-Szenen (minimal_hud.tscn)
+scripts/         GDScript-Logik (Guardian, Injects, Mobs …)
+scripts/spirits/ Spirit-Daten, Roster-Komponente, Feld-Avatar
+scripts/ui/      HUD-Skripte und -Widgets
+data/spirits/    Die 9 Basis-Spirits (.tres)
 assets/          shaders/, models/, textures/ …
 tests/           Headless-Tests
 docs/            WORKFLOW.md, PATCHNOTES.md

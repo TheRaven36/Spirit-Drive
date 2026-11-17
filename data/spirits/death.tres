@@ -1,0 +1,11 @@
+[gd_resource type="Resource" script_class="SpiritData" format=3]
+
+[ext_resource type="Script" path="res://scripts/spirits/spirit_data.gd" id="1_spirit"]
+
+[resource]
+script = ExtResource("1_spirit")
+spirit_name = "Tod"
+pillar = 2
+element = 8
+theme_color = Color(0.6, 0.7, 0.3, 1)
+special_effect_tag = "armor_decay"

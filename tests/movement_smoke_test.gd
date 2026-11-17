@@ -336,6 +336,7 @@ func _test_dual_force_sum() -> void:
 			"S: Doppel-Pendel ohne Schwungverlust (Energie %.0f %%)" % (rig.energy_ratio * 100.0))
 	# (e) Gameplay: Doppel-Tap auf denselben Pfeiler haengt beide Haken an
 	await _place(Vector3(0, 1.2, 0), 0.0, 0.0)
+	await _frames(int(g.hook_cooldown * 60.0) + 2)  # beide Werfer nachgeladen
 	var t := _closest_tower()
 	_aim_at(t.pos + Vector3(0, t.size.y * 0.3, 0))
 	await _process_frames(2)

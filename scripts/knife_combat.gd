@@ -44,6 +44,12 @@ extends Node
 ## HIT-WINDOW BEI HIGH-SPEED: Reichweite des Lock-Schlags und Kugel-Radius wachsen mit
 ##   dem Tempo, die Active-Phase verlaengert sich, und der Lock-Treffer prueft die ganze
 ##   Strecke seit dem letzten Physik-Frame (kein Durchtunneln bei 60+ m/s).
+##
+## WAFFEN-SPIRIT (set_weapon_spirit, gespeist vom SpiritRosterComponent):
+##   Der gesockelte Spirit faerbt Klinge + Trail in seine theme_color und haengt
+##   seinen special_effect_tag an jeden Treffer (info.effect_tag). Schaden (vor dem
+##   Deckel) x weapon_damage_multiplier x Saeulen-Vorteil, falls das Ziel eine
+##   Saeule hat (Methode get_spirit_pillar() -> SpiritData.Pillar).
 
 signal slash_started(combo_index: int)
 signal hit_landed(target: Node, damage: float, info: Dictionary)
@@ -137,11 +143,105 @@ var _pierce_used := 0.0
 var _pierce_done: Dictionary = {}   # shape instance id -> true
 ## Ergebnis des letzten Piercing-Schlags: [{part, pct, damage, dist, traversed, primary}]
 var last_pierce: Array = []
+## Aktuell gesockelter Spirit (null = blanke Klinge).
+var weapon_spirit: SpiritData = null
+## Farbe fuer Klingen-Glow und Slash-Trail (blanke Klinge = weiss).
+var trail_color := Color.WHITE
+var _blade_mat: StandardMaterial3D = null
+## Leichter Slash-Trail: kleine Leucht-Quader entlang der Klingenspitze (1 Draw Call).
+const TRAIL_POINTS := 12
+const TRAIL_LIFETIME := 0.18
+var _trail_mm: MultiMesh = null
+var _trail_mmi: MultiMeshInstance3D = null
+var _trail_pos := PackedVector3Array()
+var _trail_age := PackedFloat32Array()
 
 
 func _ready() -> void:
 	_guardian = get_parent() as GuardianController
 	_shape.radius = hit_radius
+	_build_trail.call_deferred()
+
+
+## Waffen-Sockel setzen: Klingen-Glow, Trail-Farbe, Element-Tag.
+func set_weapon_spirit(spirit: SpiritData) -> void:
+	weapon_spirit = spirit
+	trail_color = spirit.theme_color if spirit else Color.WHITE
+	if _guardian == null:
+		return
+	if _blade_mat == null:
+		_blade_mat = StandardMaterial3D.new()
+		_blade_mat.metallic = 0.9
+		_blade_mat.roughness = 0.25
+		_blade_mat.emission_enabled = true
+		for pivot: Node3D in [_guardian.knife_tp, _guardian.knife_fp]:
+			var blade := pivot.get_node_or_null("Blade") as GeometryInstance3D
+			if blade:
+				blade.material_override = _blade_mat
+	_blade_mat.albedo_color = trail_color.lerp(Color(0.85, 0.88, 0.92), 0.4)
+	_blade_mat.emission = trail_color
+	_blade_mat.emission_energy_multiplier = 1.5 if spirit else 0.0
+	if _trail_mm:
+		(_trail_mm.mesh.surface_get_material(0) as StandardMaterial3D).albedo_color = trail_color
+
+
+## Element-Faktor des gesockelten Spirits gegen `target` (1.0 ohne Spirit).
+func element_multiplier(target: Node) -> float:
+	if weapon_spirit == null:
+		return 1.0
+	var m := weapon_spirit.weapon_damage_multiplier
+	if target and target.has_method("get_spirit_pillar"):
+		m *= SpiritRosterComponent.pillar_multiplier(weapon_spirit.pillar, target.get_spirit_pillar())
+	return m
+
+
+
+func _build_trail() -> void:
+	if _guardian == null:
+		return
+	var mat := StandardMaterial3D.new()
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat.vertex_color_use_as_albedo = true
+	mat.albedo_color = trail_color
+	var mesh := BoxMesh.new()
+	mesh.size = Vector3(0.06, 0.06, 0.06)
+	mesh.material = mat
+	_trail_mm = MultiMesh.new()
+	_trail_mm.transform_format = MultiMesh.TRANSFORM_3D
+	_trail_mm.use_colors = true
+	_trail_mm.mesh = mesh
+	_trail_mm.instance_count = TRAIL_POINTS
+	_trail_mm.visible_instance_count = 0
+	_trail_mmi = MultiMeshInstance3D.new()
+	_trail_mmi.name = "SlashTrail"
+	_trail_mmi.top_level = true
+	_trail_mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_trail_mmi.multimesh = _trail_mm
+	_guardian.add_child(_trail_mmi)
+	_trail_mmi.global_transform = Transform3D.IDENTITY
+
+
+func _process(delta: float) -> void:
+	if _trail_mm == null:
+		return
+	# Neue Trail-Punkte nur waehrend der Active-Phase an der sichtbaren Klinge.
+	if phase == Phase.ACTIVE:
+		var pivot: Node3D = _guardian.knife_fp if _guardian.first_person else _guardian.knife_tp
+		var blade := pivot.get_node_or_null("Blade") as Node3D
+		if blade:
+			_trail_pos.append(blade.global_transform * Vector3(0, 0, -0.3))
+			_trail_age.append(0.0)
+	for i in _trail_age.size():
+		_trail_age[i] += delta
+	while not _trail_age.is_empty() and (_trail_age[0] > TRAIL_LIFETIME or _trail_age.size() > TRAIL_POINTS):
+		_trail_age.remove_at(0)
+		_trail_pos.remove_at(0)
+	_trail_mm.visible_instance_count = _trail_pos.size()
+	for i in _trail_pos.size():
+		var k := 1.0 - _trail_age[i] / TRAIL_LIFETIME
+		_trail_mm.set_instance_transform(i, Transform3D(Basis.from_scale(Vector3.ONE * (0.4 + k)), _trail_pos[i]))
+		_trail_mm.set_instance_color(i, Color(1, 1, 1, k))
 
 
 func request_slash(lock: Node3D = null) -> void:
@@ -510,7 +610,11 @@ func compute_damage(vel: Vector3, combo_mult := 1.0, turbo := false) -> Dictiona
 func _deal(target: Node, mult: float, dir: Vector3, point: Node3D = null) -> float:
 	var info := compute_damage(_swing_velocity, mult, _swing_turbo)
 	var point_mult: float = point.damage_mult if point is LockPoint else 1.0
-	info["raw_damage"] = info.damage * point_mult
+	var elem_mult := element_multiplier(target)
+	info["raw_damage"] = info.damage * point_mult * elem_mult
+	info["element_mult"] = elem_mult
+	info["element"] = weapon_spirit.element_name() if weapon_spirit else ""
+	info["effect_tag"] = weapon_spirit.special_effect_tag if weapon_spirit else ""
 	info["hit_cap"] = hit_cap_for(target)
 	info.damage = scale_for_target(info.raw_damage, target)
 	info["point_mult"] = point_mult

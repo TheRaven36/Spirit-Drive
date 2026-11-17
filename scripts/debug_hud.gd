@@ -1,5 +1,6 @@
 extends CanvasLayer
-## Debug-HUD (clean): nur Fadenkreuz + Infotext.
+## Debug-HUD (clean): nur Fadenkreuz + Lock-Rahmen + Debug-Werte (oben rechts).
+## HP, Haken, Spirits und Steuerung zeigt das MinimalHUD (scenes/ui/minimal_hud.tscn).
 ## Der Auto-Aim arbeitet unsichtbar im Hintergrund – Seil und Trefferpunkt
 ## sieht der Spieler direkt in der Welt. Das Fadenkreuz faerbt sich nur dezent:
 ## gruen = Seil-Ziel, orange = LMB wuerde einen Gegner greifen (Auto-Grab).
@@ -17,7 +18,6 @@ const COL_IDLE := Color(1, 1, 1, 0.5)
 var _guardian: GuardianController
 var _crosshair: Label
 var _info: Label
-var _hooks: Label
 var reticle: LockReticle
 
 
@@ -33,23 +33,15 @@ func _ready() -> void:
 	reticle.name = "LockReticle"
 	add_child(reticle)
 
-	_info = _make_label("", 16)
+	_info = _make_label("", 13)
 	_info.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
-	_info.position = Vector2(16, 12)
-
-	_hooks = _make_label("", 18)
-	_hooks.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)
-	_hooks.grow_horizontal = Control.GROW_DIRECTION_BOTH
-	_hooks.position.y -= 90
-
-	var help := _make_label(
-			"WASD Laufen | Shift Sprint | Space Sprung | P Kamera | RMB halten Seil (Doppel-Tap = 2. Haken)\n"
-			+ "Am Seil: W Turbo, S starres Seil, A/D seitlich | LMB halten = Gegner unterm Fadenkreuz greifen, "
-			+ "loslassen = Schlag\nMausrad-Klick Ziel waehlen + Kamera-Snap (halten = loesen), "
-			+ "Mausrad Trefferpunkt-Wechsel | R Reset", 14)
-	help.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
-	help.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT)
-	help.position += Vector2(16, -74)
+	_info.vertical_alignment = VERTICAL_ALIGNMENT_TOP
+	_info.modulate = Color(1, 1, 1, 0.6)
+	_info.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
+	_info.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	_info.offset_left = -300.0
+	_info.offset_top = 12.0
+	_info.offset_right = -16.0
 
 
 func _make_label(text: String, size: int) -> Label:
@@ -84,12 +76,11 @@ func _process(_delta: float) -> void:
 		extra += "   ANGRIFF"
 
 	_update_reticle(g)
-	_hooks.text = "%s L   %s R%s" % [_dot(g.hook_left.active), _dot(g.hook_right.active), extra]
 
 	var v := g.velocity
 	var horiz := Vector2(v.x, v.z).length()
-	_info.text = "Speed  %5.1f m/s  (horiz %5.1f)\nState  %s\nHit    %s\nCam    %s\nFPS    %d" % [
-		v.length(), horiz, STATE_NAMES[g.state], _hit_text(g.knife.last_hit),
+	_info.text = "Speed  %5.1f m/s  (horiz %5.1f)\nState  %s%s\nHit    %s\nCam    %s\nFPS    %d" % [
+		v.length(), horiz, STATE_NAMES[g.state], extra, _hit_text(g.knife.last_hit),
 		"First-Person" if g.first_person else "Third-Person",
 		Engine.get_frames_per_second(),
 	]
@@ -109,10 +100,6 @@ func _update_reticle(g: GuardianController) -> void:
 	reticle.show_at(c, c.distance_to(edge), g.hard_lock_in_range())
 
 
-func _dot(on: bool) -> String:
-	return "●" if on else "○"
-
-
 func _hit_text(h: Dictionary) -> String:
 	if h.is_empty():
 		return "-"
@@ -121,4 +108,6 @@ func _hit_text(h: Dictionary) -> String:
 		t = "%d @ %s  (Speed x%.1f" % [h.damage, h.point, h.speed_mult]
 	if h.is_plunge:
 		t += ", PLUNGE x%.1f" % h.plunge_mult
+	if h.get("effect_tag", "") != "":
+		t += ", %s x%.2f" % [h.effect_tag, h.element_mult]
 	return t + ")"

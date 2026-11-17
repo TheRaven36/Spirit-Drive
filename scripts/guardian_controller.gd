@@ -33,6 +33,9 @@ extends CharacterBody3D
 
 signal state_changed(new_state: State)
 signal camera_mode_changed(first_person: bool)
+## Ein Hueft-Haken wurde abgefeuert / eingeholt (HUD-Indikatoren, FX).
+signal hook_fired(hook: GrappleHook)
+signal hook_released(hook: GrappleHook)
 
 enum State { NORMAL, HOOKED, WALLRUN }
 enum AimKind { NONE, POINT, ENEMY }
@@ -88,6 +91,9 @@ enum AimKind { NONE, POINT, ENEMY }
 @export var rope_steer_accel := 24.0
 ## Nach dem Loslassen haengt das Seil so lange locker (keine Kraft) – Fenster fuer den Doppel-Tap.
 @export var double_tap_window := 0.2
+## Nachlade-Zeit eines Hueft-Werfers nach dem Einholen (s). Die andere Huefte
+## bleibt frei -> Seil-Ketten L/R im Wechsel laufen ohne Wartezeit.
+@export var hook_cooldown := 0.3
 ## Mindestabstand der beiden Anker beim Doppel-Tap. 0 = beide Haken duerfen an denselben
 ## Punkt/Pfeiler (doppelte Zugkraft).
 @export var dual_min_separation := 0.0
@@ -174,6 +180,9 @@ const HIP_UP := -0.15
 @onready var knife: KnifeCombat = $Knife
 @onready var knife_tp: Node3D = $Visual/KnifePivot
 @onready var knife_fp: Node3D = $CameraRig/Pitch/SpringArm3D/Camera3D/ViewKnife
+## Optionale Komponenten (Coop-ready: pro Guardian, keine Singletons).
+@onready var health: HealthComponent = get_node_or_null("Health") as HealthComponent
+@onready var spirit_roster: SpiritRosterComponent = get_node_or_null("SpiritRoster") as SpiritRosterComponent
 
 var state: State = State.NORMAL
 var first_person := false
@@ -240,6 +249,13 @@ func _ready() -> void:
 	rotation = Vector3.ZERO
 	_build_rope_renderer()
 	_apply_camera_blend(0.0)
+	for h in hooks:
+		h.cooldown_time = hook_cooldown
+		h.fired.connect(hook_fired.emit)
+		h.released.connect(hook_released.emit)
+	if spirit_roster:
+		spirit_roster.weapon_spirit_changed.connect(knife.set_weapon_spirit)
+		knife.set_weapon_spirit(spirit_roster.weapon_spirit())
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
 
@@ -364,6 +380,8 @@ func _tick_timers(delta: float) -> void:
 	_coyote_t -= delta
 	_jump_buffer_t -= delta
 	_wallrun_lockout -= delta
+	for h in hooks:
+		h.tick(delta)
 
 
 func _refresh_state() -> void:
@@ -590,14 +608,14 @@ func combat_hook() -> GrappleHook:
 	return null
 
 
-## Naechste freie Huefte, abwechselnd links/rechts.
+## Naechste freie (und nachgeladene) Huefte, abwechselnd links/rechts.
 func _take_free_hip() -> GrappleHook:
 	if _next_hip == null:
 		_next_hip = hook_left
 	var first := _next_hip
 	var second := hook_right if first == hook_left else hook_left
-	for h in [first, second]:
-		if not h.active:
+	for h: GrappleHook in [first, second]:
+		if h.is_ready():
 			_next_hip = hook_right if h == hook_left else hook_left
 			return h
 	return null
@@ -1144,6 +1162,8 @@ func _respawn() -> void:
 	velocity = Vector3.ZERO
 	_vel_history.clear()
 	_set_state(State.NORMAL)
+	if health:
+		health.reset()
 	reset_physics_interpolation()
 
 
