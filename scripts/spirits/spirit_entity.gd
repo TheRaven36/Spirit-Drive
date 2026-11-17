@@ -5,7 +5,11 @@ extends CharacterBody3D
 ## Kopplung an SEINEN Guardian (Coop-ready, keine Singletons):
 ##   - Daten/Farbe: guardian.spirit_roster.field_spirit_changed (Tasten 1/2/3)
 ##   - Befehle:     guardian.hard_lock_changed – Hard-Lock (auch Mausrad-Wechsel) = Fokus-Ziel,
-##                  Lock geloest (Lock-Taste halten) = Rueckruf zu FOLLOW_PROTECT.
+##                  Lock geloest (Doppelklick / Halten) = Rueckruf zu FOLLOW_PROTECT.
+##   - Leine:       Das Fokus-Ziel gilt nur, solange es in Grapple-Reichweite des Guardians liegt
+##                  (Lock-Rahmen farbig). Grau = Spirit laeuft physisch zum Guardian zurueck und
+##                  greift wieder an, sobald das Ziel zurueck in Reichweite ist. Kein Teleport –
+##                  ausser als Notfall (> emergency_teleport_distance oder unter die Map gefallen).
 ##
 ## State-Machine:
 ##   FOLLOW_PROTECT  folgt dem Guardian am Boden (follow_min..follow_max Abstand). Bodyguard:
@@ -16,7 +20,7 @@ extends CharacterBody3D
 ##
 ## Kollision: Layer 2 -> Guardian-Raycasts/Messer (Maske 1) ignorieren den Spirit.
 
-signal hit_landed(target: Node, damage: float, effect_tag: String)
+signal hit_landed(target: Node, damage: float, effect_tag: String, hit_position: Vector3)
 
 enum State { FOLLOW_PROTECT, CHASE, ATTACK }
 
@@ -30,8 +34,8 @@ enum State { FOLLOW_PROTECT, CHASE, ATTACK }
 @export var accel := 60.0
 @export var gravity := 30.0
 @export var turn_speed := 10.0
-## Weiter weg (z. B. nach Respawn) = direkt neben den Guardian versetzen.
-@export var teleport_distance := 60.0
+## Nur Notfall: weiter weg (oder unter die Map gefallen) = neben den Guardian versetzen.
+@export var emergency_teleport_distance := 150.0
 @export var spawn_offset := Vector3(4.5, 0.0, 1.0)
 
 @export_group("Follow / Protect")
@@ -110,10 +114,11 @@ func _on_hard_lock_changed(target: Node3D) -> void:
 	guard_target = null
 
 
-## Aktuelles Ziel: Fokus-Befehl hat Vorrang, sonst Bodyguard.
+## Aktuelles Ziel: Fokus-Befehl hat Vorrang (nur in Grapple-Reichweite des Guardians,
+## sonst Rueckweg zum Guardian), ohne Befehl Bodyguard.
 func current_target() -> Node3D:
 	if _valid(combat_target):
-		return combat_target
+		return combat_target if _guardian.hard_lock_in_range() else null
 	return guard_target if _valid(guard_target) else null
 
 
@@ -121,7 +126,8 @@ func _physics_process(delta: float) -> void:
 	if _guardian == null or spirit == null:
 		return
 	_attack_cd -= delta
-	if _guardian.global_position.distance_to(global_position) > teleport_distance:
+	if _guardian.global_position.distance_to(global_position) > emergency_teleport_distance \
+			or global_position.y < GuardianController.RESPAWN_Y:
 		_place_next_to_guardian()
 	_update_guard_target()
 	var t := current_target()
@@ -185,17 +191,30 @@ func _process_lunge(delta: float) -> void:
 		if rc == null or rc == _guardian or _hit_this_lunge.has(rc.get_instance_id()):
 			continue
 		_hit_this_lunge[rc.get_instance_id()] = true
-		_deal_hit(rc)
+		_deal_hit(rc, _hit_position(rc))
 
 
-func _deal_hit(receiver: Node) -> void:
+## Trefferstelle = naechster Punkt des naechsten Koerperteils zur Hitbox-Mitte.
+func _hit_position(receiver: Node) -> Vector3:
+	var c := _hitbox.global_position
+	var best := c
+	var best_d := INF
+	for cs in KnifeCombat.body_parts(receiver):
+		var p := KnifeCombat.closest_point_on_part(cs, c)
+		if p.distance_to(c) < best_d:
+			best_d = p.distance_to(c)
+			best = p
+	return best
+
+
+func _deal_hit(receiver: Node, hit_pos: Vector3) -> void:
 	var mult := 1.0
 	if receiver.has_method("get_spirit_pillar"):
 		mult = SpiritRosterComponent.pillar_multiplier(spirit.pillar, receiver.get_spirit_pillar())
 	var dmg := base_damage * mult
 	receiver.take_hit(dmg, -global_basis.z, self)
 	hits_dealt += 1
-	hit_landed.emit(receiver, dmg, spirit.special_effect_tag)
+	hit_landed.emit(receiver, dmg, spirit.special_effect_tag, hit_pos)
 	print("[SPIRIT] %s trifft %s: %.0f (x%.1f) [%s]" % [
 			spirit.spirit_name, receiver.name, dmg, mult, spirit.special_effect_tag])
 

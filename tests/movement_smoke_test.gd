@@ -3,6 +3,8 @@ extends SceneTree
 ## Aufruf: godot --headless --path . --script res://tests/movement_smoke_test.gd
 ## Exit-Code 0 = alles ok, 1 = Fehler.
 
+const BOOST_SPOT := Vector3(0, 80, 0)
+
 var _fails := 0
 var arena: Node
 var g: GuardianController
@@ -52,12 +54,62 @@ func _run() -> void:
 	await _test_piercing_falloff()
 	await _test_rope_bending()
 	await _test_wallrun()
+	await _test_attack_reel_boost()
 
 	print("SMOKE TEST: %s" % ("OK" if _fails == 0 else "%d FEHLER" % _fails))
 	quit(1 if _fails > 0 else 0)
 
 
 # --- Tests ----------------------------------------------------------------
+## Additiver Anflug-Schub: 50 m Combat-Anflug auf den Hard-Lock, Start 100 m/s (Tempo-Deckel
+## dafuer kurz angehoben). Liefert die Geschwindigkeit beim Erreichen des Ziels.
+func _boost_run(angle_deg: float, boost: float) -> float:
+	var target := _dummy_near(Vector3(25, 12, 15))
+	target.global_position = BOOST_SPOT  # freier Luftraum ueber allen Tuermen
+	var goal := target.get_lock_point()
+	var dir := Vector3(0, sin(deg_to_rad(angle_deg)), -cos(deg_to_rad(angle_deg)))
+	await _place(goal - dir * 50.0, 0.0, 0.0)
+	g.attack_reel_boost_accel = boost
+	g.hard_lock = target
+	g.velocity = dir * 100.0
+	g._fire_combat_hook(target)
+	var v0 := g.velocity.length()
+	var v_end := 0.0
+	for i in 60:
+		await physics_frame
+		v_end = g.velocity.length()
+		if g.global_position.distance_to(goal) < 4.0:
+			break
+	g._release_all_hooks()
+	g.release_hard_lock()
+	target.global_position = Vector3(25, 12, 15)
+	_revive(target)
+	return v_end / v0 * 100.0  # Endtempo bezogen auf 100 m/s Start
+
+
+func _test_attack_reel_boost() -> void:
+	print("Anflug-Schub (LMB auf Hard-Lock, additiv)")
+	var term := g.terminal_speed
+	var accel := g.attack_reel_boost_accel
+	g.terminal_speed = 500.0
+	var flat_off := await _boost_run(0.0, 0.0)
+	var flat_on := await _boost_run(0.0, accel)
+	_check(absf(flat_off - 100.0) < 2.0, "ohne Schub: Tempo bleibt ~100 (%.1f)" % flat_off)
+	_check(flat_on > 107.0 and flat_on < 113.0, "50 m Anflug: 100 -> ~110 (%.1f, +%.0f %%)" % [flat_on, flat_on - 100.0])
+	var up_off := await _boost_run(30.0, 0.0)
+	var down_off := await _boost_run(-30.0, 0.0)
+	var up_on := await _boost_run(30.0, accel)
+	var down_on := await _boost_run(-30.0, accel)
+	# Schwerkraft-Anteil (v² - Differenz) bleibt mit Schub gleich -> additives Modell.
+	var grav_off := down_off * down_off - up_off * up_off
+	var grav_on := down_on * down_on - up_on * up_on
+	_check(down_on > up_on and up_on > up_off and down_on > down_off,
+			"Schub wirkt bergauf (%.1f -> %.1f) und im Sturzflug (%.1f -> %.1f)" % [up_off, up_on, down_off, down_on])
+	_check(grav_off > 0.0 and absf(grav_on - grav_off) < grav_off * 0.1,
+			"Schwerkraft-Differenz bleibt erhalten (v²: %.0f ohne / %.0f mit Schub)" % [grav_off, grav_on])
+	g.terminal_speed = term
+	g.attack_reel_boost_accel = accel
+	await _place(Vector3(0, 1.2, 0), 0.0, 0.0)
 func _test_basic_movement() -> void:
 	print("Movement")
 	_check(g.is_on_floor(), "steht nach Spawn auf dem Boden")
@@ -490,6 +542,14 @@ func _test_hard_lock_toggle() -> void:
 	Input.action_release("hard_lock")
 	await _frames(2)
 	_check(g.hard_lock == null, "gedrueckt halten loest die Auswahl")
+	# Doppelklick auf die bestehende Auswahl loest ebenfalls
+	await _action_event("hard_lock")
+	_check(g.hard_lock == d, "Klick waehlt erneut")
+	await _frames(int(g.lock_double_click * 60.0) + 2)
+	await _action_event("hard_lock")
+	_check(g.hard_lock == d, "Einzelklick (nach dem Fenster) behaelt die Auswahl")
+	await _action_event("hard_lock")
+	_check(g.hard_lock == null, "Doppelklick (< %.1f s) loest die Auswahl" % g.lock_double_click)
 
 func _test_lock_cycling_giant() -> void:
 	print("Ziel-Wechsel per Mausrad (Riese)")
@@ -865,6 +925,7 @@ func _test_hard_lock_camera() -> void:
 	await _process_frames(3)
 	Input.action_release("look_right")
 	_check(not g.is_snapping(), "Umsehen bricht den Snap ab (Spieler hat Vorrang)")
+	await _frames(int(g.lock_double_click * 60.0) + 2)  # kein Doppelklick (= Loesen)
 	await _action_event("hard_lock")
 	await _process_frames(40)
 	_check(_cam_error_deg(d.get_lock_point()) < 1.0, "erneuter Klick = neuer Snap")
@@ -1027,7 +1088,7 @@ func _test_boss_damage_scaling() -> void:
 	k._swing_velocity = Vector3(0, -74, -8)
 	k._swing_turbo = true
 	k.combo_index = 0
-	k._deal(giant, 1.0, Vector3.DOWN, chest)
+	k._deal(giant, 1.0, Vector3.DOWN, chest.global_position, chest)
 	var dealt := hp0 - giant.hp
 	_check(dealt > 0.0 and dealt <= giant.max_hp * 0.15 + 0.5,
 			"Treffer am Riesen gedeckelt (%.0f Schaden, roh %.0f)" % [dealt, k.last_hit.get("raw_damage", 0.0)])

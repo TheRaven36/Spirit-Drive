@@ -20,7 +20,8 @@ extends CharacterBody3D
 ##             heran, LMB loslassen = Momentum-Slash im Anflug.
 ##           - Ziel-Auswahl (Mausrad-Klick / R3): waehlt das Ziel unterm Fadenkreuz
 ##             und gibt einen Kamera-Snap-Impuls darauf – danach ist die Kamera sofort
-##             wieder frei. Erneut druecken = erneuter Snap, gedrueckt halten = Ziel loesen.
+##             wieder frei. Erneut druecken = erneuter Snap. Loesen: Doppelklick ODER
+##             gedrueckt halten (lock_clear_hold) – der Feld-Spirit kehrt dann zurueck.
 ##             Mausrad = Trefferpunkt-Wechsel am gewaehlten Gegner (Nacken, Knie ...).
 ##             Die Auswahl bleibt bis 3x Grapple-Reichweite bestehen (ausserhalb der
 ##             Reichweite grau, kein Seil), danach wird sie automatisch geloescht.
@@ -124,6 +125,10 @@ enum AimKind { NONE, POINT, ENEMY }
 ## Lenk-Drehrate (rad/s) pro Seil am Gegner: dreht die Geschwindigkeit zum Ziel, ohne sie zu
 ## bremsen (Zentripetal-Beschleunigung = Rate * Tempo). Wenderadius = Tempo / (Rate * Seile).
 @export var carve_turn_rate := 3.5
+## LMB-Anflug auf den Hard-Lock: konstanter Zusatz-Zug zum Ziel (m/s², additiv zu Schwerkraft,
+## Momentum und Seil – wie ein Gas-Schub). Kalibriert ueber v² = v0² + 2·a·d:
+## 50 m Anflug mit 100 m/s -> ~110 m/s am Ziel (a = (110² - 100²) / 100 = 21).
+@export var attack_reel_boost_accel := 21.0
 
 # --- Free-Flow Auto-Grab (LMB ohne Hard-Lock) ------------------------------
 @export_group("Auto Grab")
@@ -142,7 +147,9 @@ enum AimKind { NONE, POINT, ENEMY }
 ## Dauer des Kamera-Snap-Impulses (s). Danach gehoert die Kamera wieder dem Spieler.
 @export var snap_duration := 0.22
 ## So lange Mausrad-Klick / R3 halten, um die Auswahl zu loesen (s).
-@export var lock_clear_hold := 0.45
+@export var lock_clear_hold := 0.5
+## Zweiter Klick auf eine bestehende Auswahl innerhalb dieses Fensters (s) = Auswahl loesen.
+@export var lock_double_click := 0.3
 ## Fang-Kegel fuer das Combat-/Auto-Grab-Fenster waechst mit dem Tempo (Grad pro m/s) ...
 @export var speed_cone_per_mps := 0.06
 ## ... bis maximal so viele Grad zusaetzlich.
@@ -257,6 +264,8 @@ var _clock := 0.0
 var _snap_t := -1.0
 var _snap_from := Vector2.ZERO
 var _lock_hold_t := -1.0
+## _clock-Zeit des letzten Lock-Klicks auf eine bestehende Auswahl (Doppelklick-Erkennung).
+var _lock_press_at := -INF
 ## LMB-Doppelklick: Haltedauer seit dem letzten Druck, Fenster nach einem kurzen Klick (-1 = aus).
 var _attack_held_t := 0.0
 var _combat_tap_t := -1.0
@@ -764,6 +773,7 @@ func _process_hooked(wish: Vector3, delta: float) -> void:
 	else:
 		_enemy_gravity(delta)
 		_carve_to_enemy(on_enemy, delta)
+		_attack_boost(delta)
 	if on_enemy < 2:
 		_rope_steer(delta)
 	if is_on_floor():
@@ -886,6 +896,18 @@ func _carve_to_enemy(hooks_on_enemy: int, delta: float) -> void:
 		axis = velocity.cross(Vector3.UP if absf(dir.y) < 0.9 else Vector3.RIGHT)
 	var angle := minf(velocity.angle_to(dir), carve_turn_rate * hooks_on_enemy * delta)
 	velocity = velocity.rotated(axis.normalized(), angle)
+
+
+## LMB-Anflug auf den Hard-Lock: additiver Zug entlang der Zielrichtung (Gas-Schub).
+## Kein Override – Schwerkraft (Sturzflug) und Momentum bleiben voll erhalten.
+func _attack_boost(delta: float) -> void:
+	var ch := combat_hook()
+	if ch == null or not is_hard_locked() or hit_receiver_of(ch.target) != hit_receiver_of(hard_lock):
+		return
+	var goal := enemy_goal()
+	if global_position.distance_to(goal) <= hang_length:
+		return
+	velocity += global_position.direction_to(goal) * attack_reel_boost_accel * delta
 
 
 ## A / D am Seil: seitlich quer zum Seil ausweichen / schwingen.
@@ -1087,9 +1109,17 @@ func _is_lockable(t: Object) -> bool:
 # Hard-Lock & Ziel-Wechsel
 # =========================================================================
 ## Mausrad-Klick / R3: ohne Auswahl das Ziel unterm Fadenkreuz waehlen, dann
-## Kamera-Snap-Impuls auf das gewaehlte Ziel. Gedrueckt halten (lock_clear_hold)
-## loest die Auswahl – siehe _update_lock_button().
+## Kamera-Snap-Impuls auf das gewaehlte Ziel. Loesen: Doppelklick auf die bestehende
+## Auswahl (lock_double_click) oder gedrueckt halten (lock_clear_hold, _update_lock_button()).
 func press_target_button() -> void:
+	if is_hard_locked() and _clock - _lock_press_at <= lock_double_click:
+		_lock_press_at = -INF
+		_lock_hold_t = -1.0
+		release_hard_lock()
+		return
+	# Nur ein Klick auf eine schon bestehende Auswahl startet das Doppelklick-Fenster –
+	# Auswaehlen + sofortiger Snap-Klick loest also nicht versehentlich.
+	_lock_press_at = _clock if is_hard_locked() else -INF
 	_lock_hold_t = 0.0
 	if not is_hard_locked():
 		var t := lock_target

@@ -12,6 +12,7 @@
 [ext_resource type="Resource" path="res://data/spirits/life.tres" id="10_life"]
 [ext_resource type="PackedScene" path="res://scenes/spirits/spirit_entity.tscn" id="11_spirit"]
 [ext_resource type="PackedScene" path="res://scenes/ui/minimal_hud.tscn" id="12_minhud"]
+[ext_resource type="Script" path="res://scripts/ui/damage_number_manager.gd" id="13_dmgnum"]
 
 [sub_resource type="ProceduralSkyMaterial" id="SkyMat"]
 sky_top_color = Color(0.32, 0.5, 0.78, 1)
@@ -168,3 +169,9 @@ guardian_path = NodePath("../Guardian")
 
 [node name="MinimalHUD" parent="." instance=ExtResource("12_minhud")]
 guardian_path = NodePath("../Guardian")
+
+[node name="DamageNumbers" type="CanvasLayer" parent="."]
+layer = 3
+script = ExtResource("13_dmgnum")
+guardian_path = NodePath("../Guardian")
+spirit_path = NodePath("../Guardian/SpiritEntity")

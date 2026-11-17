@@ -10,6 +10,7 @@ scenes/test_arena.tscn      Hauptszene (F5)
 scenes/props/               Einzelne Props/Gegner-Szenen (training_dummy.tscn)
 scenes/spirits/spirit_entity.tscn  Feld-Spirit (Greybox-Kapsel, Hitbox)
 scenes/ui/minimal_hud.tscn  Minimal-HUD (HP, Haken, Spirit-Slots, Steuerungs-Overlay auf +)
+scenes/ui/damage_number.tscn  Eine Floating Damage Number (Label + Pop-Tween)
 scenes/areas/               Streamfaehige Areale (keine Megaszene)
 scripts/
   guardian_controller.gd    Spieler: Movement, Wall-Run, Seilphysik, Kamera
@@ -22,7 +23,8 @@ scripts/
   health_component.gd       Lebenspunkte (Komponente, Signal health_changed)
   spirits/                  SpiritData (Resource), SpiritLibrary, SpiritRosterComponent (3er-Roster,
                             Feld 1/2/3, Waffen-Sockel Q/E, Saeulen-Vorteil), SpiritEntity (Feld-Spirit-KI)
-  ui/                       MinimalHUD + Widgets (HookIndicator, SpiritSlot)
+  ui/                       MinimalHUD + Widgets (HookIndicator, SpiritSlot),
+                            DamageNumberManager (Treffer -> Zahl an der Trefferstelle)
   test_arena.gd             Arena-Aufbau (MultiMesh, ein StaticBody3D)
   training_dummy.gd         Trainings-Ziel
   training_giant.gd         Grosser Test-Gegner mit mehreren LockPoints

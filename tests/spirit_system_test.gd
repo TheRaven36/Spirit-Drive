@@ -43,6 +43,7 @@ func _run() -> void:
 	await _test_hud_hooks()
 	await _test_hud_health()
 	await _test_controls_overlay()
+	await _test_damage_numbers()
 
 	print("SPIRIT TEST: %s" % ("OK" if _fails == 0 else "%d FEHLER" % _fails))
 	quit(1 if _fails > 0 else 0)
@@ -192,6 +193,11 @@ func _test_weapon_damage() -> void:
 	var h := g.knife.last_hit
 	_check(hp0 - d.hp > 0.0 and h.get("effect_tag", "") == "burn" and h.get("element", "") == "FIRE",
 			"Treffer traegt Element + Tag (burn)")
+	var nums := arena.get_node("DamageNumbers").get_children()
+	_check(nums.size() == 1 and nums[0] is DamageNumber
+			and (nums[0] as DamageNumber).world_pos == h.get("hit_position", Vector3.INF)
+			and KnifeCombat.part_distance(d.get_node("Shape"), h.hit_position) < 0.05,
+			"Damage-Number an der Trefferstelle der Hitbox")
 	_check(absf((hp0 - d.hp) - g.knife.min_damage) < 0.6 and is_equal_approx(h.get("element_mult", 0.0), 1.0),
 			"neutrales Ziel = Basis-Schaden (%.1f)" % (hp0 - d.hp))
 	await _frames(30)
@@ -282,6 +288,39 @@ func _test_controls_overlay() -> void:
 	_check(hud.controls_overlay.visible, "Num+ funktioniert auch")
 	await _key(KEY_KP_ADD)
 	_check(MinimalHUD.key_text(&"cycle_weapon_spirit_next") == "E", "Tastennamen aus der InputMap")
+
+
+func _test_damage_numbers() -> void:
+	print("Damage-Numbers")
+	var M := DamageNumberManager
+	_check(is_equal_approx(M.scale_for(400.0), 2.0) and is_equal_approx(M.scale_for(800.0), 2.0),
+			"400+ Schaden = 2.0x")
+	_check(is_equal_approx(M.scale_for(20.0), 1.05) and is_equal_approx(M.scale_for(0.0), 1.0),
+			"20 Schaden = 1.05x (Basis 1.0x)")
+	_check(is_equal_approx(M.scale_for(400.0) / M.scale_for(0.0), 2.0), "Skala: doppelt so gross")
+	var c20 := M.color_for(20.0)
+	var c200 := M.color_for(200.0)
+	var c400 := M.color_for(400.0)
+	_check(c400.is_equal_approx(Color(1.0, 0.1, 0.1)), "400 = Karmesin %s" % c400)
+	_check(c20.r == 1.0 and c20.g > 0.95 and c20.b > 0.8, "20 = fast weiss %s" % c20)
+	_check(c200.r == 1.0 and c200.g < c20.g and c200.g > c400.g and c200.b < 0.3,
+			"200 = Gelb/Orange dazwischen %s" % c200)
+	var mgr: DamageNumberManager = arena.get_node("DamageNumbers")
+	var n := mgr.spawn(400.0, g.global_position + Vector3(0, 1, -5))
+	_check(n != null and n.text == "400" and n.get_theme_color("font_color") == c400
+			and n.get_theme_constant("outline_size") > 0, "Zahl, Farbe und schwarze Outline")
+	await process_frame
+	_check(n.scale.x < 1.3 * 2.0 and n.scale.x >= 0.3 * 2.0 - 0.01, "Pop startet klein (%.2f)" % n.scale.x)
+	var peak := 0.0
+	for i in 15:  # 0.25 s: Pop (0.08 s) + Einschwingen (0.1 s)
+		await physics_frame
+		peak = maxf(peak, n.scale.x)
+	_check(peak > 2.2 and is_equal_approx(n.scale.x, 2.0), "Overshoot (max %.2f) -> 2.0x" % peak)
+	var y0 := n.position.y
+	await _frames(10)
+	_check(n.position.y < y0, "driftet nach oben")
+	await _frames(50)
+	_check(not is_instance_valid(n), "nach ~0.8 s ausgeblendet und entfernt")
 
 
 # --- Helfer ---------------------------------------------------------------

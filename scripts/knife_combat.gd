@@ -328,7 +328,7 @@ func _sweep_hits() -> void:
 		if receiver and closest.distance_to(lp) <= strike_reach() \
 				and not _already_hit.has(receiver.get_instance_id()):
 			_already_hit[receiver.get_instance_id()] = true
-			var dmg := _deal(receiver, mult, dir, _lock)
+			var dmg := _deal(receiver, mult, dir, lp, _lock)
 			_begin_pierce(receiver, _part_of_point(receiver, _lock, lp), lp, dmg, dir)
 	_shape.radius = swing_radius()
 	var center := pos + Vector3.UP * 0.4 + dir * hit_reach
@@ -349,11 +349,12 @@ func _sweep_hits() -> void:
 		# Treffer am Koerper des gelockten Ziels zaehlt fuer den Lock-Punkt.
 		var point: Node3D = _lock if is_instance_valid(_lock) \
 				and GuardianController.hit_receiver_of(_lock) == col else null
-		var dmg := _deal(col as Node, mult, dir, point)
 		# Primaer-Teil = getroffene Shape, Epizentrum = naechster Punkt darauf.
 		var part := _shape_of(col, r.get("shape", -1))
+		var hit_pos := closest_point_on_part(part, pos) if part else (col as Node3D).global_position
+		var dmg := _deal(col as Node, mult, dir, hit_pos, point)
 		if part != null:
-			_begin_pierce(col as Node, part, closest_point_on_part(part, pos), dmg, dir)
+			_begin_pierce(col as Node, part, hit_pos, dmg, dir)
 	_update_pierce()
 
 
@@ -487,7 +488,8 @@ func _update_pierce() -> void:
 			continue
 		_pierce_used += pct
 		_pierce_receiver.take_hit(dmg, _pierce_dir, _guardian)
-		var info := {"damage": dmg, "point": entry.part, "pct": pct, "pierce": true}
+		var info := {"damage": dmg, "point": entry.part, "pct": pct, "pierce": true,
+				"hit_position": closest_point_on_part(cs, _pierce_epicenter)}
 		hit_landed.emit(_pierce_receiver, dmg, info)
 		if debug_hits:
 			print("[PIERCE]   %-8s %3d %%  %.0f Schaden  (%.2f m vom Epizentrum)"
@@ -603,7 +605,8 @@ func compute_damage(vel: Vector3, combo_mult := 1.0, turbo := false) -> Dictiona
 	}
 
 
-func _deal(target: Node, mult: float, dir: Vector3, point: Node3D = null) -> float:
+## hit_pos = Trefferstelle am Koerperteil (Damage-Numbers).
+func _deal(target: Node, mult: float, dir: Vector3, hit_pos: Vector3, point: Node3D = null) -> float:
 	var info := compute_damage(_swing_velocity, mult, _swing_turbo)
 	var lp := point as LockPoint
 	var point_mult := lp.damage_mult if lp else 1.0
@@ -616,6 +619,7 @@ func _deal(target: Node, mult: float, dir: Vector3, point: Node3D = null) -> flo
 	info.damage = scale_for_target(info.raw_damage, target)
 	info["point_mult"] = point_mult
 	info["point"] = lp.label if lp else ""
+	info["hit_position"] = hit_pos
 	last_hit = info
 	target.take_hit(info.damage, dir, _guardian)
 	hit_landed.emit(target, info.damage, info)

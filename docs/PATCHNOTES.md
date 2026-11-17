@@ -4,6 +4,36 @@ Neueste Einträge immer oben.
 
 ## Unreleased
 
+### 2026-11-17 – Phase 2C: Spirit-Leine, Dual-Unlock, Damage-Numbers, Anflug-Schub
+**Spirit-Leine (kein Gummiband mehr)**
+- Teleport zum Guardian entfernt. Nur noch Notfall: > 150 m Abstand (`emergency_teleport_distance`) oder
+  unter die Map gefallen.
+- Fokus-Ziel gilt nur, solange der Lock in Grapple-Reichweite ist (Rahmen farbig). Rahmen grau → Spirit bricht
+  ab und läuft physisch (Sprint 32 m/s, an Wänden entlang) zum Guardian zurück; wieder in Reichweite → greift an.
+
+**Hard-Lock lösen: Doppelklick ODER 0,5 s halten**
+- Neu `lock_double_click` (0,3 s): zweiter Klick auf eine bestehende Auswahl löst sie. Auswählen + sofortiger
+  Snap-Klick löst nicht (nur Klicks auf eine schon bestehende Auswahl zählen). `lock_clear_hold` 0,45 → 0,5 s.
+- Beide Wege rufen den Feld-Spirit in `FOLLOW_PROTECT` zurück.
+
+**Floating Damage Numbers (`DamageNumberManager`, `scenes/ui/damage_number.tscn`)**
+- Jeder Treffer (Messer, Piercing-Nebentreffer, Feld-Spirit) zeigt die Zahl an der Trefferstelle der Hitbox
+  (`info.hit_position` bzw. neuer Parameter `hit_position` an `SpiritEntity.hit_landed`).
+- `t = Schaden / 400`: Größe 1,0× → 2,0×, Farbe Weiß → Gelb → Orange → Karmesin `(1, 0.1, 0.1)`, schwarze Outline.
+- Pop 0,3 → 1,3 × Zielgröße (0,08 s) → 1,0×, Drift nach oben mit kleinem Zufalls-Versatz, Ausblenden nach 0,8 s.
+
+**Anflug-Schub (LMB auf den Hard-Lock)**
+- `attack_reel_boost_accel` = 21 m/s² zusätzlich entlang der Zielrichtung, additiv zu Schwerkraft, Momentum und
+  Seil (kein Velocity-Override). Kalibriert über v² = v0² + 2·a·d: 50 m mit 100 m/s → ~110 m/s.
+- Gemessen (Tempo-Deckel im Test angehoben, Messung 4 m vor dem Ziel): flach 100 → 108; bergauf 100 → 108,
+  Sturzflug 106 → 114 – der Schwerkraft-Anteil bleibt gleich. Im normalen Spiel deckelt `terminal_speed` (75 m/s).
+
+**Tests**
+- Smoke: Doppelklick- und Halten-Unlock, Anflug-Schub (flach/bergauf/Sturzflug, Schwerkraft-Differenz).
+- Spirit-Entity: Leine (kein Teleport, max. Schritt pro Frame, Rückkehr in Reichweite), Rückruf per
+  Halten und per Doppelklick, Trefferposition auf der Hitbox.
+- Spirit-System: Damage-Number-Skala/-Farbe (20 / 200 / 400), Pop-Overshoot, Drift, Entfernen, Zahl am Treffer.
+
 ### 2026-11-17 – Phase 2B: Feld-Spirit als Kampf-Monster + Hard-Lock-Befehl
 **SpiritEntity (`scenes/spirits/spirit_entity.tscn`, ersetzt den schwebenden Platzhalter)**
 - Greybox-Kapsel (3,0 m / r 0,8 m) mit Visor vorne, gefärbt in der `theme_color` des Feld-Spirits mit leichtem
