@@ -25,9 +25,10 @@ scripts/
                             Feld 1/2/3, Waffen-Sockel Q/E, Saeulen-Vorteil), SpiritEntity (Feld-Spirit-KI)
   ui/                       MinimalHUD + Widgets (HookIndicator, SpiritSlot),
                             DamageNumberManager (Treffer -> Zahl an der Trefferstelle)
-  test_arena.gd             Arena-Aufbau (MultiMesh, ein StaticBody3D)
+  test_arena.gd             Geschlossene Greybox-Hoehle (MultiMesh je Form, ein StaticBody3D),
+                            Stalagmiten/Stalaktiten/Mega-Saeulen, 3 Riesen (1.0x/1.4x/2.0x)
   training_dummy.gd         Trainings-Ziel
-  training_giant.gd         Grosser Test-Gegner mit mehreren LockPoints
+  training_giant.gd         Test-Gegner mit LockPoints, size_scale + Saeule
 data/spirits/               Die 9 Basis-Spirits (.tres)
 assets/shaders|models|textures
 tests/movement_smoke_test.gd  Headless-Smoke-Test (Exit-Code 0 = ok)

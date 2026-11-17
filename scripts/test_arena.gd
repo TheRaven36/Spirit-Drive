@@ -1,13 +1,46 @@
 extends Node3D
-## Test-Arena fuer Movement-Tests.
+## Test-Arena: geschlossene Greybox-Hoehle.
 ##
-## Performance-Gesetz: Alle Bloecke werden ueber EIN MultiMeshInstance3D
-## gerendert (1 Draw Call) und teilen sich EINEN StaticBody3D mit mehreren
-## Collision-Shapes. Seed ist fix -> Layout ist reproduzierbar.
+## Innen das bisherige Layout (Tuerme, Waende, Allee, Plattformen). Drumherum:
+##   - Hoehlenwaende + Decke auf CEILING_MULT x hoechster Turm (max_pillar_height),
+##     Boden 300 x 300 aus test_arena.tscn -> kein Herausfallen mehr.
+##   - Stalagmiten (Boden), Stalaktiten (Decke, Anker fuer Decken-Schwuenge) und
+##     durchgehende Mega-Saeulen Boden -> Decke (vertikale Katapult-Pfade).
+##   - Drei Riesen fuer den Massstab: 1.0x NATURE, 1.4x ORDER, 2.0x CYCLE (Titan).
+##
+## Performance-Gesetz: je Form EIN MultiMeshInstance3D (Bloecke, Hoehlenhuelle, Zylinder =
+## 3 Draw Calls), alle teilen sich EINEN StaticBody3D mit mehreren Collision-Shapes.
+## Die Huelle wirft keine Schatten (sonst laege die ganze Hoehle im Sonnen-Schatten).
+## Seed ist fix -> Layout ist reproduzierbar.
 
 const GRID_SHADER := preload("res://assets/shaders/proto_grid.gdshader")
 const DUMMY_SCENE := preload("res://scenes/props/training_dummy.tscn")
-const GIANT_SPOT := Vector3(0, 0, -95)
+## Halbe Kantenlaenge des Bodens (300 x 300 in test_arena.tscn).
+const CAVE_HALF := 150.0
+const SHELL_THICKNESS := 2.0
+const CEILING_MULT := 3.0
+const COL_SHELL := Color(0.55, 0.57, 0.62)
+const COL_ROCK := Color(0.8, 0.74, 0.66)
+
+## Riesen: [name, position, groesse, saeule, anzeigename]
+const GIANTS := [
+	["TrainingGiant", Vector3(0, 0, -95), 1.0, SpiritData.Pillar.NATURE, "RIESE"],
+	["GiantLarge", Vector3(100, 0, -80), 1.4, SpiritData.Pillar.ORDER, "GROSSER RIESE"],
+	["TitanColossus", Vector3(90, 0, 60), 2.0, SpiritData.Pillar.CYCLE, "TITAN"],
+]
+## Durchgehende Mega-Saeulen Boden -> Decke: [x, z, radius]
+const MEGA_PILLARS := [[40.0, 115.0, 6.0], [-125.0, 40.0, 5.0], [125.0, -15.0, 5.5]]
+## Stalagmiten (aus dem Boden): [x, z, radius, hoehe]
+const STALAGMITES := [
+	[95.0, 105.0, 3.0, 18.0], [-40.0, 130.0, 2.5, 30.0], [-132.0, -20.0, 4.0, 24.0],
+	[132.0, 40.0, 2.0, 12.0], [60.0, -125.0, 3.5, 35.0], [-50.0, -135.0, 3.0, 16.0],
+]
+## Stalaktiten (aus der Decke): [x, z, radius, laenge]
+const STALACTITES := [
+	[60.0, 40.0, 3.0, 40.0], [-40.0, 60.0, 2.5, 55.0], [80.0, -40.0, 4.0, 30.0],
+	[-70.0, -60.0, 3.0, 45.0], [20.0, -120.0, 3.5, 60.0], [-110.0, 110.0, 3.0, 35.0],
+	[110.0, 110.0, 2.5, 50.0], [-20.0, 95.0, 2.0, 25.0],
+]
 
 ## Trainings-Dummies (Boden, Plattform-Hoehe, frei schwebend).
 const DUMMY_SPOTS := [
@@ -17,13 +50,26 @@ const DUMMY_SPOTS := [
 
 @export var layout_seed := 1337
 
-var _boxes: Array[Dictionary] = []  # {pos: Vector3, size: Vector3, color: Color}
+## Hoehe des hoechsten Turms und daraus die Hoehlendecke (Unterkante).
+var max_pillar_height := 0.0
+var ceiling_height := 0.0
+
+var _boxes: Array[Dictionary] = []      # {pos: Vector3, size: Vector3, color: Color}
+var _shell: Array[Dictionary] = []      # Hoehlenwaende + Decke (Boxen ohne Schatten)
+var _cylinders: Array[Dictionary] = []  # size = (Durchmesser, Hoehe, Durchmesser)
 
 
 func _ready() -> void:
 	_build_layout()
-	_spawn_boxes()
+	_build_cave()
+	var body := StaticBody3D.new()
+	body.name = "BlocksCollision"
+	add_child(body)
+	_spawn_instances("BlocksMultiMesh", _boxes, BoxMesh.new(), true, body)
+	_spawn_instances("CaveShell", _shell, BoxMesh.new(), false, body)
+	_spawn_instances("CaveColumns", _cylinders, _unit_cylinder(), true, body)
 	_spawn_dummies()
+	_spawn_giants()
 
 
 func _add_box(pos: Vector3, size: Vector3, color := Color.WHITE) -> void:
@@ -40,6 +86,7 @@ func _build_layout() -> void:
 		var r := rng.randf_range(38.0, 70.0)
 		var h := rng.randf_range(22.0, 48.0)
 		var w := rng.randf_range(4.0, 7.0)
+		max_pillar_height = maxf(max_pillar_height, h)
 		_add_box(Vector3(cos(a) * r, h * 0.5, sin(a) * r), Vector3(w, h, w),
 				Color(0.85, 0.9, 1.0))
 
@@ -76,38 +123,74 @@ func _build_layout() -> void:
 		_add_box(p, s, Color(0.95, 0.95, 0.95))
 
 
-func _spawn_boxes() -> void:
-	var mesh := BoxMesh.new()
+## Geschlossene Huelle, Stalagmiten, Stalaktiten und Mega-Saeulen.
+func _build_cave() -> void:
+	ceiling_height = CEILING_MULT * max_pillar_height
+	var h := ceiling_height
+	var t := SHELL_THICKNESS
+	var span := 2.0 * (CAVE_HALF + t)
+	var off := CAVE_HALF + t * 0.5
+	_shell.append({"pos": Vector3(0, h + t * 0.5, 0), "size": Vector3(span, t, span), "color": COL_SHELL})
+	for side in [-1.0, 1.0]:
+		_shell.append({"pos": Vector3(off * side, h * 0.5, 0), "size": Vector3(t, h, span), "color": COL_SHELL})
+		_shell.append({"pos": Vector3(0, h * 0.5, off * side), "size": Vector3(span, h, t), "color": COL_SHELL})
+	for m: Array in MEGA_PILLARS:
+		_add_cylinder(Vector3(m[0], h * 0.5, m[1]), m[2], h)
+	for s: Array in STALAGMITES:
+		_add_cylinder(Vector3(s[0], s[3] * 0.5, s[1]), s[2], s[3])
+	for s: Array in STALACTITES:
+		_add_cylinder(Vector3(s[0], h - s[3] * 0.5, s[1]), s[2], s[3])
+
+
+func _add_cylinder(pos: Vector3, radius: float, height: float) -> void:
+	_cylinders.append({"pos": pos, "size": Vector3(radius * 2.0, height, radius * 2.0), "color": COL_ROCK})
+
+
+func _unit_cylinder() -> CylinderMesh:
+	var c := CylinderMesh.new()
+	c.top_radius = 0.5
+	c.bottom_radius = 0.5
+	c.height = 1.0
+	return c
+
+
+## Ein MultiMesh (1 Draw Call) fuer alle Eintraege + passende Collision-Shapes im gemeinsamen Body.
+func _spawn_instances(node_name: String, items: Array[Dictionary], mesh: PrimitiveMesh,
+		shadows: bool, body: StaticBody3D) -> void:
 	var mat := ShaderMaterial.new()
 	mat.shader = GRID_SHADER
 	mat.set_shader_parameter("use_instance_tint", true)
 	mesh.material = mat
-
 	var mm := MultiMesh.new()
 	mm.transform_format = MultiMesh.TRANSFORM_3D
 	mm.use_colors = true
 	mm.mesh = mesh
-	mm.instance_count = _boxes.size()
-
-	var body := StaticBody3D.new()
-	body.name = "BlocksCollision"
-	add_child(body)
-
-	for i in _boxes.size():
-		var b: Dictionary = _boxes[i]
+	mm.instance_count = items.size()
+	for i in items.size():
+		var b: Dictionary = items[i]
 		mm.set_instance_transform(i, Transform3D(Basis.from_scale(b.size), b.pos))
 		mm.set_instance_color(i, b.color)
-		var shape := BoxShape3D.new()
-		shape.size = b.size
 		var col := CollisionShape3D.new()
-		col.shape = shape
+		col.shape = _shape_for(mesh, b.size)
 		col.position = b.pos
 		body.add_child(col)
-
 	var mmi := MultiMeshInstance3D.new()
-	mmi.name = "BlocksMultiMesh"
+	mmi.name = node_name
 	mmi.multimesh = mm
+	if not shadows:
+		mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(mmi)
+
+
+func _shape_for(mesh: PrimitiveMesh, size: Vector3) -> Shape3D:
+	if mesh is CylinderMesh:
+		var c := CylinderShape3D.new()
+		c.radius = size.x * 0.5
+		c.height = size.y
+		return c
+	var b := BoxShape3D.new()
+	b.size = size
+	return b
 
 
 func _spawn_dummies() -> void:
@@ -115,8 +198,19 @@ func _spawn_dummies() -> void:
 		var d := DUMMY_SCENE.instantiate() as Node3D
 		d.position = p
 		add_child(d)
-	# Grosser Test-Gegner mit mehreren Lock-Punkten (Hard-Lock + Mausrad-Wechsel)
-	var giant := TrainingGiant.new()
-	giant.name = "TrainingGiant"
-	giant.position = GIANT_SPOT
-	add_child(giant)
+
+
+## Riesen in drei Groessen, Gesicht zur Arena-Mitte. HP wachsen mit der Groesse.
+func _spawn_giants() -> void:
+	for g: Array in GIANTS:
+		var giant := TrainingGiant.new()
+		giant.name = g[0]
+		giant.position = g[1]
+		giant.size_scale = g[2]
+		giant.pillar = g[3]
+		giant.display_name = g[4]
+		giant.max_hp *= g[2]
+		var to_center := -(g[1] as Vector3)
+		if to_center.length() > 0.1:
+			giant.rotation.y = atan2(to_center.x, to_center.z)
+		add_child(giant)

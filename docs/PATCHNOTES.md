@@ -4,6 +4,35 @@ Neueste Einträge immer oben.
 
 ## Unreleased
 
+### 2026-11-17 – Phase 2D: 5-s-Damage-Numbers, leere Waffe, Säulen-Nachteil, Höhlen-Arena
+**Damage Numbers (5,0 s)**
+- 0–0,1 s Overshoot-Pop (0,3 → 1,3 → 1,0 × Zielgröße), bis 3,5 s voll sichtbar mit langsamer Drift nach oben,
+  3,5–5,0 s lineares Ausfaden, danach entfernt.
+
+**Leere Waffe / Reiner Stahl**
+- Q/E-Zyklus hat einen 4. Zustand: Slot 1 → 2 → 3 → leer → Slot 1 (`weapon_socket_spirit_index = -1`,
+  `SpiritRosterComponent.SOCKET_NONE`). HUD zeigt dann keinen Waffen-Kern, Klinge + Trail silber.
+- Leere Waffe ignoriert Säulen (immer 1,0×) und gibt +15 % (`steel_momentum_bonus`) auf High-Speed-Treffer
+  (Schlag-Tempo ≥ `steel_bonus_min_speed` 20 m/s). Treffer-Info: `steel_bonus`.
+
+**Säulen-Multiplikator**
+- Jetzt mit Nachteil: Vorteil 1,5×, **Nachteil 0,75×** (vorher 1,0×), gleiche Säule 1,0× – für gesockelte Waffe
+  und Feld-Spirit. Die Riesen haben jetzt Säulen, der Faktor greift also im Spiel.
+
+**Geschlossene Greybox-Höhle**
+- Decke auf 3 × höchster Turm (`max_pillar_height` 45,5 m → Decke 136,4 m), Wände rundum am Bodenrand (±150 m),
+  alles mit Collision. Wände/Decke werfen keine Schatten (sonst läge die Höhle im Sonnen-Schatten).
+- 6 Stalagmiten, 8 Stalaktiten (25–60 m, Decken-Anker), 3 Mega-Säulen Boden → Decke. Zylinder als eigenes
+  MultiMesh (+2 Draw Calls gesamt), Collision im gemeinsamen StaticBody3D.
+- Drei Riesen: Standard 1,0× NATURE (bisherige Position), Großer Riese 1,4× ORDER, Titan 2,0× CYCLE (27,6 m,
+  6000 HP). `TrainingGiant.size_scale` skaliert Teile, Shapes und Lock-Punkte direkt; Gesicht zur Mitte.
+
+**Tests**
+- Spirit-System: NONE im Zyklus (E/Q, Signal, HUD, Trail), Stahl-Bonus (1,15× ab 20 m/s, Säule egal, Rohschaden
+  Stahl = Feuer × 1,15), Nachteil 0,75×, Damage-Number-Lebensdauer (α = 1 bis 3,5 s, 0,5 bei 4,25 s, weg nach 5 s).
+- Smoke: Höhle (Decke per Raycast auf 3 × Turmhöhe, 4 Wände, Mega-Säulen, Stalaktit/Stalagmit, 3 Riesen inkl.
+  Titan-Hitbox/-Lock-Punkte); Mausrad-Test zählt nur noch die Punkte des gewählten Riesen.
+
 ### 2026-11-17 – Phase 2C: Spirit-Leine, Dual-Unlock, Damage-Numbers, Anflug-Schub
 **Spirit-Leine (kein Gummiband mehr)**
 - Teleport zum Guardian entfernt. Nur noch Notfall: > 150 m Abstand (`emergency_teleport_distance`) oder

@@ -1,14 +1,17 @@
 class_name DamageNumber
 extends Label
-## Eine Schadenszahl: haengt an einer 3D-Position (jeden Frame projiziert), poppt mit
-## Overshoot auf, driftet leicht nach oben (+ kleiner Zufalls-Versatz gegen Ueberlappen)
-## und blendet nach LIFETIME aus.
+## Eine Schadenszahl: haengt an einer 3D-Position (jeden Frame projiziert).
+##   0.0 - 0.1 s  Overshoot-Pop (0.3 -> 1.3 -> 1.0 x Zielgroesse)
+##   0.1 - 3.5 s  voll sichtbar, driftet langsam nach oben (lesbar nach dem Vorbeiflug)
+##   3.5 - 5.0 s  lineares Ausfaden, danach queue_free()
+## Kleiner horizontaler Zufalls-Versatz gegen Ueberlappen.
 
 const POP_FROM := 0.3
 const POP_OVERSHOOT := 1.3
-const POP_TIME := 0.08
-const SETTLE_TIME := 0.1
-const LIFETIME := 0.8
+const POP_TIME := 0.05
+const SETTLE_TIME := 0.05
+const FADE_START := 3.5
+const LIFETIME := 5.0
 const RISE := 1.5          # m nach oben ueber die Lebenszeit
 const JITTER := 0.5        # m horizontaler Zufalls-Versatz
 
@@ -35,8 +38,8 @@ func _ready() -> void:
 	var tw := create_tween()
 	tw.tween_property(self, "scale", Vector2.ONE * POP_OVERSHOOT * target_scale, POP_TIME)
 	tw.tween_property(self, "scale", Vector2.ONE * target_scale, SETTLE_TIME)
-	tw.tween_property(self, "modulate:a", 0.0, LIFETIME - POP_TIME - SETTLE_TIME) \
-			.set_ease(Tween.EASE_IN)
+	tw.tween_interval(FADE_START - POP_TIME - SETTLE_TIME)
+	tw.tween_property(self, "modulate:a", 0.0, LIFETIME - FADE_START)  # linear
 	tw.tween_callback(queue_free)
 	_follow()
 

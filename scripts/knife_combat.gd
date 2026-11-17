@@ -48,8 +48,10 @@ extends Node
 ## WAFFEN-SPIRIT (set_weapon_spirit, gespeist vom SpiritRosterComponent):
 ##   Der gesockelte Spirit faerbt Klinge + Trail in seine theme_color und haengt
 ##   seinen special_effect_tag an jeden Treffer (info.effect_tag). Schaden (vor dem
-##   Deckel) x weapon_damage_multiplier x Saeulen-Vorteil, falls das Ziel eine
-##   Saeule hat (Methode get_spirit_pillar() -> SpiritData.Pillar).
+##   Deckel) x weapon_damage_multiplier x Saeulen-Faktor (1.5 / 0.75 / 1.0), falls das
+##   Ziel eine Saeule hat (Methode get_spirit_pillar() -> SpiritData.Pillar).
+##   Leere Waffe (null, reiner Stahl): Silber-Trail, kein Saeulen-Faktor, dafuer
+##   +steel_momentum_bonus bei High-Speed-Treffern (Schlag-Tempo >= steel_bonus_min_speed).
 
 signal slash_started(combo_index: int)
 signal hit_landed(target: Node, damage: float, info: Dictionary)
@@ -106,6 +108,11 @@ enum Phase { IDLE, WINDUP, ACTIVE, RECOVERY }
 @export var pierce_secondary_budget := 1.0
 ## Abtastschritt (m) entlang der Flugbahn.
 @export var pierce_path_step := 0.4
+@export_group("Reiner Stahl")
+## Bonus der leeren Waffe bei High-Speed-Treffern (0.15 = +15 %).
+@export var steel_momentum_bonus := 0.15
+## Ab diesem Schlag-Tempo (m/s) gilt ein Treffer als High-Speed.
+@export var steel_bonus_min_speed := 20.0
 @export_group("Debug")
 ## Konsolen-Ausgabe + Marker fuer Treffer-Zonen, Epizentrum und Prozentwerte.
 @export var debug_hits := true
@@ -145,8 +152,9 @@ var _pierce_done: Dictionary = {}   # shape instance id -> true
 var last_pierce: Array = []
 ## Aktuell gesockelter Spirit (null = blanke Klinge).
 var weapon_spirit: SpiritData = null
-## Farbe fuer Klingen-Glow und Slash-Trail (blanke Klinge = weiss).
-var trail_color := Color.WHITE
+## Farbe fuer Klingen-Glow und Slash-Trail (leere Waffe = Silber).
+const STEEL_COLOR := Color(0.88, 0.9, 0.95)
+var trail_color := STEEL_COLOR
 var _blade_mat: StandardMaterial3D = null
 ## Leichter Slash-Trail: kleine Leucht-Quader entlang der Klingenspitze (1 Draw Call).
 const TRAIL_POINTS := 12
@@ -166,7 +174,7 @@ func _ready() -> void:
 ## Waffen-Sockel setzen: Klingen-Glow, Trail-Farbe, Element-Tag.
 func set_weapon_spirit(spirit: SpiritData) -> void:
 	weapon_spirit = spirit
-	trail_color = spirit.theme_color if spirit else Color.WHITE
+	trail_color = spirit.theme_color if spirit else STEEL_COLOR
 	if _guardian == null:
 		return
 	if _blade_mat == null:
@@ -180,20 +188,25 @@ func set_weapon_spirit(spirit: SpiritData) -> void:
 				blade.material_override = _blade_mat
 	_blade_mat.albedo_color = trail_color.lerp(Color(0.85, 0.88, 0.92), 0.4)
 	_blade_mat.emission = trail_color
-	_blade_mat.emission_energy_multiplier = 1.5 if spirit else 0.0
+	_blade_mat.emission_energy_multiplier = 1.5 if spirit else 0.4  # Stahl: dezentes Silber
 	if _trail_mm:
 		(_trail_mm.mesh.surface_get_material(0) as StandardMaterial3D).albedo_color = trail_color
 
 
-## Element-Faktor des gesockelten Spirits gegen `target` (1.0 ohne Spirit).
+## Faktor der Waffe gegen `target`: gesockelt = Spirit-Multiplikator x Saeulen-Faktor,
+## leer = 1.0 bzw. Stahl-Bonus bei High-Speed (Saeulen ignoriert).
 func element_multiplier(target: Node) -> float:
 	if weapon_spirit == null:
-		return 1.0
+		return 1.0 + steel_momentum_bonus if is_steel_bonus() else 1.0
 	var m := weapon_spirit.weapon_damage_multiplier
 	if target and target.has_method("get_spirit_pillar"):
 		m *= SpiritRosterComponent.pillar_multiplier(weapon_spirit.pillar, target.get_spirit_pillar())
 	return m
 
+
+## Leere Waffe + aktueller Schlag schnell genug -> Stahl-Bonus.
+func is_steel_bonus() -> bool:
+	return weapon_spirit == null and _swing_velocity.length() >= steel_bonus_min_speed
 
 
 func _build_trail() -> void:
@@ -615,6 +628,7 @@ func _deal(target: Node, mult: float, dir: Vector3, hit_pos: Vector3, point: Nod
 	info["element_mult"] = elem_mult
 	info["element"] = weapon_spirit.element_name() if weapon_spirit else ""
 	info["effect_tag"] = weapon_spirit.special_effect_tag if weapon_spirit else ""
+	info["steel_bonus"] = is_steel_bonus()
 	info["hit_cap"] = hit_cap_for(target)
 	info.damage = scale_for_target(info.raw_damage, target)
 	info["point_mult"] = point_mult

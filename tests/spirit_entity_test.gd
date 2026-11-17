@@ -129,7 +129,9 @@ func _test_hard_lock_attack() -> void:
 	_check(sp.combat_target == other and sp.state == SpiritEntity.State.CHASE, "Ziel-Wechsel -> Spirit zieht mit")
 	# Saeulen-Vorteil am Treffer
 	_check(_pillar_damage(SpiritData.Pillar.ORDER) == sp.base_damage * 1.5
-			and _pillar_damage(SpiritData.Pillar.CYCLE) == sp.base_damage, "Feuer: 1.5x gegen ORDER, 1.0x gegen CYCLE")
+			and _pillar_damage(SpiritData.Pillar.CYCLE) == sp.base_damage * 0.75
+			and _pillar_damage(SpiritData.Pillar.NATURE) == sp.base_damage,
+			"Feuer: 1.5x gegen ORDER, 0.75x gegen CYCLE, 1.0x gegen NATURE")
 
 
 func _test_leash() -> void:

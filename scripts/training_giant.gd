@@ -1,19 +1,25 @@
 class_name TrainingGiant
 extends StaticBody3D
-## Grosser Test-Gegner (~14 m) mit mehreren Lock-Punkten (LockPoint) fuer
-## Hard-Lock und Mausrad-Ziel-Wechsel. Baut Koerper, Kollision und Punkte selbst.
-## Steht mit dem Gesicht in +Z (Richtung Spawn).
+## Grosser Test-Gegner (~14 m x size_scale) mit mehreren Lock-Punkten (LockPoint) fuer
+## Hard-Lock und Mausrad-Ziel-Wechsel. Baut Koerper, Kollision und Punkte selbst –
+## size_scale skaliert Teile, Shapes und Punkte direkt (kein skalierter Physik-Body).
+## Steht mit dem Gesicht in +Z. Hat eine Saeule (get_spirit_pillar) fuer Element-Faktoren.
 
 signal defeated
 
 const FLASH_TIME := 0.15
 const DMG_SHOW_TIME := 1.5
+const LABEL_HEIGHT := 15.0
 
 @export var max_hp := 3000.0
 @export var respawn_time := 4.0
 ## Boss-Skalierung: ein Treffer nimmt hoechstens ~diesen Anteil der Max-HP
 ## (weicher Deckel, siehe KnifeCombat.scale_for_target) – kein One-Hit-Kill.
 @export var max_hit_fraction := 0.15
+## Groessen-Faktor (1.0 = Standard-Riese, 2.0 = Titan).
+@export var size_scale := 1.0
+@export var pillar: SpiritData.Pillar = SpiritData.Pillar.NATURE
+@export var display_name := "RIESE"
 
 var hp := 3000.0
 var hits_taken := 0
@@ -56,12 +62,13 @@ func _ready() -> void:
 	_mat = StandardMaterial3D.new()
 	_mat.albedo_color = Color(0.75, 0.35, 0.35)
 	_mat.emission_enabled = true
+	var s := size_scale
 	for p: Array in PARTS:
-		_add_part(p[0], p[1] == "box", p[2], p[3])
+		_add_part(p[0], p[1] == "box", p[2] * s, p[3] * s)
 	for p: Array in POINTS:
-		_add_lock_point(p[0], p[1], p[2], p[3], p[4])
+		_add_lock_point(p[0], p[1] * s, p[2], p[3], p[4] * s)
 	_label = Label3D.new()
-	_label.position = Vector3(0, 15.0, 0)
+	_label.position = Vector3(0, LABEL_HEIGHT * s, 0)
 	_label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	_label.no_depth_test = true
 	_label.font_size = 64
@@ -112,6 +119,16 @@ func _add_lock_point(label: String, pos: Vector3, mult: float, part_name: String
 	part.add_child(lp)
 
 
+func get_spirit_pillar() -> SpiritData.Pillar:
+	return pillar
+
+
+## Gesamthoehe = Scheitel des Kopfes (letzter PARTS-Eintrag: Mitte + Radius).
+func height() -> float:
+	var head: Array = PARTS[-1]
+	return ((head[3] as Vector3).y + (head[2] as Vector3).x) * size_scale
+
+
 func get_hit_cap() -> float:
 	return max_hp * max_hit_fraction
 
@@ -159,7 +176,7 @@ func _set_visible(on: bool) -> void:
 
 
 func _update_label() -> void:
-	var t := "RIESE  %d" % maxf(hp, 0.0) if _down_t <= 0.0 else "RIESE  ..."
+	var t := "%s  %d" % [display_name, maxf(hp, 0.0)] if _down_t <= 0.0 else display_name + "  ..."
 	if _dmg_show > 0.0:
 		t += "\n-%d %s" % [last_damage, last_point]
 	_label.text = t

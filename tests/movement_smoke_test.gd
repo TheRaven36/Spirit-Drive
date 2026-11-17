@@ -55,6 +55,7 @@ func _run() -> void:
 	await _test_rope_bending()
 	await _test_wallrun()
 	await _test_attack_reel_boost()
+	await _test_cave()
 
 	print("SMOKE TEST: %s" % ("OK" if _fails == 0 else "%d FEHLER" % _fails))
 	quit(1 if _fails > 0 else 0)
@@ -85,6 +86,59 @@ func _boost_run(angle_deg: float, boost: float) -> float:
 	target.global_position = Vector3(25, 12, 15)
 	_revive(target)
 	return v_end / v0 * 100.0  # Endtempo bezogen auf 100 m/s Start
+
+
+func _test_cave() -> void:
+	print("Hoehlen-Arena")
+	var top: float = arena.max_pillar_height
+	var ceil_y: float = arena.ceiling_height
+	_check(top > 40.0 and is_equal_approx(ceil_y, 3.0 * top),
+			"Decke auf 3 x hoechster Saeule (%.1f m = 3 x %.1f m)" % [ceil_y, top])
+	var up := _cast(Vector3(0, 10, 0), Vector3(0, ceil_y + 20.0, 0))
+	_check(not up.is_empty() and absf(up.position.y - ceil_y) < 0.05, "Decke hat Collision (Grapple-Anker)")
+	var walls := 0
+	for dir: Vector3 in [Vector3.RIGHT, Vector3.LEFT, Vector3.FORWARD, Vector3.BACK]:
+		var hit := _cast(Vector3(0, ceil_y - 5.0, 0), dir * 400.0 + Vector3(0, ceil_y - 5.0, 0))
+		if not hit.is_empty() and absf((hit.position as Vector3).dot(dir) - arena.CAVE_HALF) < 0.05:
+			walls += 1
+	_check(walls == 4, "rundum geschlossene Waende bis unter die Decke (%d/4)" % walls)
+	var megas := 0
+	for m: Array in arena.MEGA_PILLARS:
+		var c := Vector3(m[0], 0, m[1])
+		var low := _cast(c + Vector3(30, 2, 0), c + Vector3(0, 2, 0))
+		var high := _cast(c + Vector3(30, ceil_y - 2.0, 0), c + Vector3(0, ceil_y - 2.0, 0))
+		if not low.is_empty() and not high.is_empty():
+			megas += 1
+	_check(megas >= 2 and megas <= 3, "%d Mega-Saeulen Boden -> Decke" % megas)
+	var tite: Array = arena.STALACTITES[0]
+	var under := _cast(Vector3(tite[0], 5, tite[1]), Vector3(tite[0], ceil_y + 5.0, tite[1]))
+	_check(not under.is_empty() and absf(under.position.y - (ceil_y - tite[3])) < 0.05,
+			"Stalaktit haengt %.0f m von der Decke" % tite[3])
+	var mite: Array = arena.STALAGMITES[0]
+	var over := _cast(Vector3(mite[0], ceil_y - 1.0, mite[1]), Vector3(mite[0], -1, mite[1]))
+	_check(not over.is_empty() and absf(over.position.y - mite[3]) < 0.05, "Stalagmit ragt %.0f m auf" % mite[3])
+	# Drei Riesen: 1.0x NATURE, 1.4x ORDER, 2.0x CYCLE
+	var std: TrainingGiant = arena.get_node("TrainingGiant")
+	var big: TrainingGiant = arena.get_node("GiantLarge")
+	var titan: TrainingGiant = arena.get_node("TitanColossus")
+	_check(std.size_scale == 1.0 and std.get_spirit_pillar() == SpiritData.Pillar.NATURE
+			and big.size_scale == 1.4 and big.get_spirit_pillar() == SpiritData.Pillar.ORDER
+			and titan.size_scale == 2.0 and titan.get_spirit_pillar() == SpiritData.Pillar.CYCLE,
+			"3 Riesen: 1.0x NATURE, 1.4x ORDER, 2.0x CYCLE")
+	_check(is_equal_approx(titan.height(), 2.0 * std.height()), "Titan doppelt so hoch (%.1f m)" % titan.height())
+	var head := _cast(titan.global_position + Vector3(0, ceil_y - 1.0, 0), titan.global_position)
+	_check(not head.is_empty() and absf(head.position.y - titan.height()) < 0.1,
+			"Titan-Hitbox skaliert mit (Scheitel bei %.1f m)" % head.position.y)
+	var kopf: LockPoint = titan.find_child("LP_Kopf", true, false)
+	var std_kopf: LockPoint = std.find_child("LP_Kopf", true, false)
+	_check(is_equal_approx(kopf.global_position.y, 2.0 * std_kopf.global_position.y)
+			and is_equal_approx(kopf.radius, 2.0 * std_kopf.radius), "Lock-Punkte skaliert (Kopf %.1f m)" % kopf.global_position.y)
+	_check(is_equal_approx(titan.max_hp, 2.0 * std.max_hp), "Titan-HP skaliert (%d)" % titan.max_hp)
+
+
+func _cast(from: Vector3, to: Vector3) -> Dictionary:
+	var q := PhysicsRayQueryParameters3D.create(from, to, 1, [g.get_rid()])
+	return g.get_world_3d().direct_space_state.intersect_ray(q)
 
 
 func _test_attack_reel_boost() -> void:
@@ -560,8 +614,8 @@ func _test_lock_cycling_giant() -> void:
 	await _frames(3)
 	var cands := g.lock_candidates()
 	var labels := []
-	for c in cands:
-		if c is LockPoint:
+	for c in cands:  # nur Punkte DIESES Riesen (die anderen Riesen der Hoehle sind auch sichtbar)
+		if c is LockPoint and GuardianController.hit_receiver_of(c) == giant:
 			labels.append((c as LockPoint).label)
 	print("    sichtbare Punkte: ", labels)
 	_check(labels.size() >= 4, "Riese bietet mehrere anvisierbare Punkte (%d)" % labels.size())

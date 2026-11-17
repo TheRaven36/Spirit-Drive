@@ -7,11 +7,13 @@ extends Node
 ##   - active_field_spirit_index (0..2): Spirit, der draussen in der Arena kaempft.
 ##   - weapon_socket_spirit_index (0..2): Spirit, der in die Waffe gesockelt ist
 ##     (Klingen-Glow/-Trail-Farbe + Elementar-Tag beim Momentum-Slash).
+##     SOCKET_NONE (-1) = leere Waffe / reiner Stahl (kein Saeulen-Faktor, dafuer
+##     Momentum-Bonus bei High-Speed, siehe KnifeCombat).
 ##   Der dritte (bzw. jeder nicht benutzte) Spirit ist die Reserve.
 ##
 ## Steuerung (InputActions, registriert ueber GuardianInput):
 ##   field_spirit_1/2/3 (Tasten 1/2/3) ......... Spirit aufs Feld schicken
-##   cycle_weapon_spirit_prev / _next (Q / E) .. gesockeltes Element wechseln
+##   cycle_weapon_spirit_prev / _next (Q / E) .. Slot 1 -> 2 -> 3 -> leer -> Slot 1
 ##
 ## Coop-ready: keine Singletons/Autoloads. Jeder Spieler hat seine eigene Komponente,
 ## die Verbraucher (Messer, HUD, Avatar) verbinden sich ueber die Signale.
@@ -30,7 +32,10 @@ const PILLAR_BEATS := {
 	SpiritData.Pillar.CYCLE: SpiritData.Pillar.NATURE,
 }
 const ADVANTAGE_MULT := 1.5
+const DISADVANTAGE_MULT := 0.75
 const NEUTRAL_MULT := 1.0
+## Waffen-Sockel leer (reiner Stahl).
+const SOCKET_NONE := -1
 const FIELD_ACTIONS: Array[StringName] = [&"field_spirit_1", &"field_spirit_2", &"field_spirit_3"]
 
 ## Die 3 gewaehlten Spirits (Reihenfolge = Slot 1..3 / Tasten 1..3).
@@ -108,26 +113,35 @@ func set_field_spirit(index: int) -> bool:
 	return true
 
 
+## index = Slot 0..2 oder SOCKET_NONE (Spirit aus der Waffe entladen).
 func set_weapon_spirit(index: int) -> bool:
-	if get_spirit(index) == null or index == weapon_socket_spirit_index:
+	if (index != SOCKET_NONE and get_spirit(index) == null) or index == weapon_socket_spirit_index:
 		return false
 	weapon_socket_spirit_index = index
 	weapon_spirit_changed.emit(weapon_spirit())
 	return true
 
 
-## Gesockeltes Element zyklisch wechseln (+1 = E, -1 = Q).
+## Gesockeltes Element zyklisch wechseln (+1 = E, -1 = Q). Der Zyklus hat einen Platz mehr
+## als das Roster: Position spirits.size() = leere Waffe.
 func cycle_weapon_spirit(step: int) -> bool:
 	if spirits.is_empty():
 		return false
-	return set_weapon_spirit(posmod(weapon_socket_spirit_index + step, spirits.size()))
+	var n := spirits.size()
+	var cur := n if weapon_socket_spirit_index == SOCKET_NONE else weapon_socket_spirit_index
+	var next := posmod(cur + step, n + 1)
+	return set_weapon_spirit(SOCKET_NONE if next == n else next)
 
 
 # --- Schere-Stein-Papier --------------------------------------------------
-## Schadens-Multiplikator Saeule gegen Saeule: NATURE > ORDER > CYCLE > NATURE = 1.5x,
-## alles andere (gleiche Saeule / Nachteil) = 1.0x.
+## Schadens-Multiplikator Saeule gegen Saeule: NATURE > ORDER > CYCLE > NATURE.
+## Vorteil 1.5x, Nachteil 0.75x, gleiche Saeule 1.0x.
 static func pillar_multiplier(attacker: SpiritData.Pillar, defender: SpiritData.Pillar) -> float:
-	return ADVANTAGE_MULT if PILLAR_BEATS.get(attacker, -1) == defender else NEUTRAL_MULT
+	if PILLAR_BEATS.get(attacker, -1) == defender:
+		return ADVANTAGE_MULT
+	if PILLAR_BEATS.get(defender, -1) == attacker:
+		return DISADVANTAGE_MULT
+	return NEUTRAL_MULT
 
 
 ## Multiplikator des gesockelten Waffen-Spirits gegen ein Ziel mit Saeule `defender`.

@@ -94,7 +94,7 @@ func _test_pillar_matrix() -> void:
 	_check(m.call(N, O) == 1.5, "NATURE vs ORDER = 1.5x")
 	_check(m.call(O, C) == 1.5, "ORDER vs CYCLE = 1.5x")
 	_check(m.call(C, N) == 1.5, "CYCLE vs NATURE = 1.5x")
-	_check(m.call(O, N) == 1.0 and m.call(C, O) == 1.0 and m.call(N, C) == 1.0, "Rueckrichtung = 1.0x")
+	_check(m.call(O, N) == 0.75 and m.call(C, O) == 0.75 and m.call(N, C) == 0.75, "Nachteil = 0.75x")
 	_check(m.call(N, N) == 1.0 and m.call(O, O) == 1.0 and m.call(C, C) == 1.0, "gleiche Saeule = 1.0x")
 
 
@@ -142,11 +142,22 @@ func _test_weapon_socket() -> void:
 	_check(g.knife.weapon_spirit == roster.spirits[1] and g.knife.trail_color == roster.spirits[1].theme_color,
 			"Messer: Element + Trail-Farbe uebernommen")
 	await _key(KEY_E)
+	_check(roster.weapon_socket_spirit_index == 2, "E -> Slot 3")
 	await _key(KEY_E)
-	_check(roster.weapon_socket_spirit_index == 0 and _weapon_events.size() == 3, "E wickelt um (3 -> 1)")
+	_check(roster.weapon_socket_spirit_index == SpiritRosterComponent.SOCKET_NONE
+			and roster.weapon_spirit() == null and _weapon_events[-1] == null, "E -> leere Waffe (NONE) + Signal")
+	_check(g.knife.weapon_spirit == null and g.knife.trail_color == KnifeCombat.STEEL_COLOR,
+			"Messer: reiner Stahl, Trail silber")
+	await _process_frames(1)
+	_check(not hud.slots[0].is_weapon and not hud.slots[1].is_weapon and not hud.slots[2].is_weapon,
+			"HUD: kein Slot mit Waffen-Indikator")
+	await _key(KEY_E)
+	_check(roster.weapon_socket_spirit_index == 0 and _weapon_events.size() == 4, "E wickelt um (leer -> 1)")
+	await _key(KEY_Q)
+	_check(roster.weapon_socket_spirit_index == SpiritRosterComponent.SOCKET_NONE, "Q rueckwaerts (1 -> leer)")
 	await _key(KEY_Q)
 	_check(roster.weapon_socket_spirit_index == 2 and _weapon_events[-1] == roster.spirits[2],
-			"Q rueckwaerts (1 -> 3)")
+			"Q rueckwaerts (leer -> 3)")
 	await _key(KEY_Q)
 	_check(roster.weapon_socket_spirit_index == 1, "Q -> Slot 2")
 	_check(roster.active_field_spirit_index == 0, "Sockel-Wechsel aendert den Feld-Spirit nicht")
@@ -165,11 +176,14 @@ func _test_weapon_damage() -> void:
 	foe.p = SpiritData.Pillar.ORDER
 	_check(is_equal_approx(g.knife.element_multiplier(foe), 1.5), "Feuer vs ORDER-Ziel = 1.5x")
 	foe.p = SpiritData.Pillar.CYCLE
-	_check(is_equal_approx(g.knife.element_multiplier(foe), 1.0), "Feuer vs CYCLE-Ziel = 1.0x")
+	_check(is_equal_approx(g.knife.element_multiplier(foe), 0.75), "Feuer vs CYCLE-Ziel = 0.75x (Nachteil)")
+	foe.p = SpiritData.Pillar.NATURE
+	_check(is_equal_approx(g.knife.element_multiplier(foe), 1.0), "Feuer vs NATURE-Ziel = 1.0x")
 	foe.p = SpiritData.Pillar.ORDER
-	roster.set_weapon_spirit(2)  # Leben (CYCLE) vs ORDER -> neutral
+	roster.set_weapon_spirit(2)  # Leben (CYCLE) vs ORDER -> Nachteil
 	_check(is_equal_approx(roster.weapon_multiplier_against(SpiritData.Pillar.NATURE), 1.5)
-			and is_equal_approx(g.knife.element_multiplier(foe), 1.0), "Leben: 1.5x nur gegen NATURE")
+			and is_equal_approx(g.knife.element_multiplier(foe), 0.75), "Leben: 1.5x gegen NATURE, 0.75x gegen ORDER")
+	await _test_steel(foe)
 	foe.free()
 	roster.set_weapon_spirit(0)
 	# Echter Treffer am Dummy (ohne Saeule): Tag am Treffer, Schaden unveraendert.
@@ -194,13 +208,46 @@ func _test_weapon_damage() -> void:
 	_check(hp0 - d.hp > 0.0 and h.get("effect_tag", "") == "burn" and h.get("element", "") == "FIRE",
 			"Treffer traegt Element + Tag (burn)")
 	var nums := arena.get_node("DamageNumbers").get_children()
-	_check(nums.size() == 1 and nums[0] is DamageNumber
-			and (nums[0] as DamageNumber).world_pos == h.get("hit_position", Vector3.INF)
+	_check(not nums.is_empty() and nums[-1] is DamageNumber
+			and (nums[-1] as DamageNumber).world_pos == h.get("hit_position", Vector3.INF)
 			and KnifeCombat.part_distance(d.get_node("Shape"), h.hit_position) < 0.05,
 			"Damage-Number an der Trefferstelle der Hitbox")
 	_check(absf((hp0 - d.hp) - g.knife.min_damage) < 0.6 and is_equal_approx(h.get("element_mult", 0.0), 1.0),
 			"neutrales Ziel = Basis-Schaden (%.1f)" % (hp0 - d.hp))
 	await _frames(30)
+
+
+## Leere Waffe: Saeule egal, +15 % nur bei High-Speed. Vergleich ueber den Rohschaden.
+func _test_steel(foe: Node) -> void:
+	var k := g.knife
+	roster.set_weapon_spirit(SpiritRosterComponent.SOCKET_NONE)
+	k._swing_velocity = Vector3(0, 0, -30)
+	foe.p = SpiritData.Pillar.CYCLE
+	var cycle_m := k.element_multiplier(foe)
+	foe.p = SpiritData.Pillar.ORDER
+	_check(is_equal_approx(k.element_multiplier(foe), 1.15) and is_equal_approx(cycle_m, 1.15),
+			"Stahl @ 30 m/s: 1.15x, Saeule des Ziels ignoriert")
+	k._swing_velocity = Vector3(0, 0, -5)
+	_check(is_equal_approx(k.element_multiplier(foe), 1.0) and not k.is_steel_bonus(), "Stahl @ 5 m/s: 1.0x")
+	# Echter Treffer-Rohschaden: Stahl vs. Feuer am neutralen Dummy, gleiches Tempo
+	var d := _dummy(Vector3(-7, 1, -24))
+	k._swing_velocity = Vector3(0, 0, -30)
+	k._deal(d, 1.0, Vector3.FORWARD, d.get_lock_point())
+	var steel_raw: float = k.last_hit.raw_damage
+	_check(k.last_hit.get("steel_bonus", false), "Treffer markiert steel_bonus")
+	roster.set_weapon_spirit(0)
+	k._deal(d, 1.0, Vector3.FORWARD, d.get_lock_point())
+	_check(is_equal_approx(steel_raw / k.last_hit.raw_damage, 1.15),
+			"High-Speed-Treffer: Stahl = Feuer x 1.15 (%.1f / %.1f)" % [steel_raw, k.last_hit.raw_damage])
+	d.hp = d.max_hp
+	k._swing_velocity = Vector3.ZERO
+
+
+func _dummy(p: Vector3) -> TrainingDummy:
+	for c in arena.get_children():
+		if c is TrainingDummy and (c as Node3D).global_position.distance_to(p) < 1.0:
+			return c
+	return null
 
 
 func _test_set_roster() -> void:
@@ -320,7 +367,20 @@ func _test_damage_numbers() -> void:
 	await _frames(10)
 	_check(n.position.y < y0, "driftet nach oben")
 	await _frames(50)
-	_check(not is_instance_valid(n), "nach ~0.8 s ausgeblendet und entfernt")
+	# Zeitbasis = Alter der Zahl (Tween-/Prozess-Zeit, headless nicht synchron zu Physik-Frames).
+	await _until_age(n, 3.4)
+	_check(n.modulate.a == 1.0, "bis 3.5 s voll sichtbar (alpha %.2f)" % n.modulate.a)
+	await _until_age(n, 4.25)
+	_check(absf(n.modulate.a - 0.5) < 0.1, "3.5 - 5.0 s lineares Ausfaden (alpha %.2f bei 4.25 s)" % n.modulate.a)
+	await _until_age(n, 4.9)
+	_check(is_instance_valid(n), "lebt bis kurz vor 5.0 s")
+	await _until_age(n, 5.2)
+	_check(not is_instance_valid(n), "nach 5.0 s entfernt")
+
+
+func _until_age(n: DamageNumber, t: float) -> void:
+	while is_instance_valid(n) and n._age < t:
+		await process_frame
 
 
 # --- Helfer ---------------------------------------------------------------
