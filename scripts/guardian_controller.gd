@@ -42,6 +42,8 @@ signal camera_mode_changed(first_person: bool)
 ## Ein Hueft-Haken wurde abgefeuert / eingeholt (HUD-Indikatoren, FX).
 signal hook_fired(hook: GrappleHook)
 signal hook_released(hook: GrappleHook)
+## Hard-Lock gesetzt, gewechselt (Mausrad) oder geloest (null) – Befehl an den Feld-Spirit.
+signal hard_lock_changed(target: Node3D)
 
 enum State { NORMAL, HOOKED, WALLRUN }
 enum AimKind { NONE, POINT, ENEMY }
@@ -219,7 +221,11 @@ var hooks: Array[GrappleHook] = [hook_left, hook_right]
 var lock_target: Node3D = null
 ## Eingerasteter Hard-Lock (Mausrad-Klick / R3). Bleibt bis zum Loesen bestehen –
 ## auch ausserhalb der Grapple-Reichweite (siehe hard_lock_in_range()).
-var hard_lock: Node3D = null
+var hard_lock: Node3D = null:
+	set(v):
+		if v != hard_lock:
+			hard_lock = v
+			hard_lock_changed.emit(v)
 ## Free-Flow: Gegner/Trefferpunkt, den LMB ohne Hard-Lock greifen wuerde.
 var auto_grab_target: Node3D = null
 ## Collider unter dem Fadenkreuz (Auto-Aim-Treffer) und Trefferposition.

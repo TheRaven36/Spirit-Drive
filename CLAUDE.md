@@ -8,6 +8,7 @@ Ablauf, Branches, Release und Checks: [docs/WORKFLOW.md](docs/WORKFLOW.md) – g
 ```
 scenes/test_arena.tscn      Hauptszene (F5)
 scenes/props/               Einzelne Props/Gegner-Szenen (training_dummy.tscn)
+scenes/spirits/spirit_entity.tscn  Feld-Spirit (Greybox-Kapsel, Hitbox)
 scenes/ui/minimal_hud.tscn  Minimal-HUD (HP, Haken, Spirit-Slots, Steuerungs-Overlay auf +)
 scenes/areas/               Streamfaehige Areale (keine Megaszene)
 scripts/
@@ -20,7 +21,7 @@ scripts/
   debug_hud.gd              Fadenkreuz + Debug-Werte (oben rechts)
   health_component.gd       Lebenspunkte (Komponente, Signal health_changed)
   spirits/                  SpiritData (Resource), SpiritLibrary, SpiritRosterComponent (3er-Roster,
-                            Feld 1/2/3, Waffen-Sockel Q/E, Saeulen-Vorteil), SpiritFieldAvatar
+                            Feld 1/2/3, Waffen-Sockel Q/E, Saeulen-Vorteil), SpiritEntity (Feld-Spirit-KI)
   ui/                       MinimalHUD + Widgets (HookIndicator, SpiritSlot)
   test_arena.gd             Arena-Aufbau (MultiMesh, ein StaticBody3D)
   training_dummy.gd         Trainings-Ziel
@@ -29,6 +30,7 @@ data/spirits/               Die 9 Basis-Spirits (.tres)
 assets/shaders|models|textures
 tests/movement_smoke_test.gd  Headless-Smoke-Test (Exit-Code 0 = ok)
 tests/spirit_system_test.gd   Spirit-System + Minimal-HUD (Exit-Code 0 = ok)
+tests/spirit_entity_test.gd   Feld-Spirit-KI: Follow, Bodyguard, Hard-Lock-Befehl (Exit-Code 0 = ok)
 tools/, start_game.bat      Windows-Start + UID-Konflikt-Fix
 docs/WORKFLOW.md, docs/PATCHNOTES.md
 ```
@@ -56,6 +58,7 @@ docs/WORKFLOW.md, docs/PATCHNOTES.md
 ## Vor jedem Commit
 1. `godot --headless --path . --import` und erzeugte `.uid`-Dateien mitcommitten.
 2. `godot --headless --path . --script res://tests/movement_smoke_test.gd` und
-   `... res://tests/spirit_system_test.gd` muessen Exit-Code 0 liefern.
+   `... res://tests/spirit_system_test.gd` und `... res://tests/spirit_entity_test.gd`
+   muessen Exit-Code 0 liefern.
 3. Eintrag in `docs/PATCHNOTES.md` (neueste oben).
 4. Nur auf `Robin-Branch` committen und pushen; `main` nur nach Robins Freigabe.

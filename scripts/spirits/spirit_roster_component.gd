@@ -89,7 +89,6 @@ func reserve_indices() -> Array[int]:
 ## Neues 3er-Roster setzen (z. B. aus einem Auswahl-Menue). Indizes werden zurueckgesetzt.
 func set_roster(new_spirits: Array[SpiritData]) -> bool:
 	if new_spirits.size() != ROSTER_SIZE or new_spirits.has(null):
-		push_warning("SpiritRoster: set_roster braucht genau %d Spirits" % ROSTER_SIZE)
 		return false
 	spirits = new_spirits.duplicate()
 	active_field_spirit_index = 0

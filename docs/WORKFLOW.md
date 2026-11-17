@@ -35,6 +35,8 @@ godot --headless --path . --import
 godot --headless --path . --script res://tests/movement_smoke_test.gd
 # Spirit-System + Minimal-HUD (Exit-Code 0 = ok)
 godot --headless --path . --script res://tests/spirit_system_test.gd
+# Feld-Spirit-KI (Exit-Code 0 = ok)
+godot --headless --path . --script res://tests/spirit_entity_test.gd
 ```
 
 ## Lokal starten (Windows)

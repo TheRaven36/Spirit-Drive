@@ -10,7 +10,7 @@
 [ext_resource type="Resource" path="res://data/spirits/fire.tres" id="8_fire"]
 [ext_resource type="Resource" path="res://data/spirits/light.tres" id="9_light"]
 [ext_resource type="Resource" path="res://data/spirits/life.tres" id="10_life"]
-[ext_resource type="Script" path="res://scripts/spirits/spirit_field_avatar.gd" id="11_avatar"]
+[ext_resource type="PackedScene" path="res://scenes/spirits/spirit_entity.tscn" id="11_spirit"]
 [ext_resource type="PackedScene" path="res://scenes/ui/minimal_hud.tscn" id="12_minhud"]
 
 [sub_resource type="ProceduralSkyMaterial" id="SkyMat"]
@@ -137,9 +137,7 @@ script = ExtResource("6_health")
 script = ExtResource("7_roster")
 spirits = Array[Resource]([ExtResource("8_fire"), ExtResource("9_light"), ExtResource("10_life")])
 
-[node name="SpiritAvatar" type="Node3D" parent="Guardian"]
-script = ExtResource("11_avatar")
-roster_path = NodePath("../SpiritRoster")
+[node name="SpiritEntity" parent="Guardian" instance=ExtResource("11_spirit")]
 
 [node name="CameraRig" type="Node3D" parent="Guardian"]
 

@@ -16,6 +16,9 @@ func _run() -> void:
 	arena = load("res://scenes/test_arena.tscn").instantiate()
 	root.add_child(arena)
 	g = arena.get_node("Guardian")
+	# Feld-Spirit stilllegen: sein Bodyguard-Angriff wuerde die Dummy-Messungen verfaelschen
+	# (eigener Test: tests/spirit_entity_test.gd).
+	g.get_node("SpiritEntity").process_mode = Node.PROCESS_MODE_DISABLED
 	await _frames(30)
 
 	await _test_basic_movement()

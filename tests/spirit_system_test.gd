@@ -28,6 +28,8 @@ func _run() -> void:
 	g = arena.get_node("Guardian")
 	roster = g.get_node("SpiritRoster")
 	hud = arena.get_node("MinimalHUD")
+	# Feld-Spirit-KI aus (Bodyguard wuerde den Messer-Test-Dummy treffen); Daten-Bindung bleibt.
+	g.get_node("SpiritEntity").set_physics_process(false)
 	roster.field_spirit_changed.connect(func(s: SpiritData) -> void: _field_events.append(s))
 	roster.weapon_spirit_changed.connect(func(s: SpiritData) -> void: _weapon_events.append(s))
 	await _frames(20)
@@ -112,13 +114,13 @@ func _test_field_switching() -> void:
 	print("Feld-Spirit (1 / 2 / 3)")
 	_check(roster.spirits.size() == 3 and roster.active_field_spirit_index == 0
 			and roster.weapon_socket_spirit_index == 0, "Start: 3 Spirits, Feld = Waffe = Slot 1")
-	var avatar: SpiritFieldAvatar = g.get_node("SpiritAvatar")
+	var entity: SpiritEntity = g.get_node("SpiritEntity")
 	_field_events.clear()
 	await _key(KEY_2)
 	_check(roster.active_field_spirit_index == 1, "Taste 2 -> Slot 2 aufs Feld")
 	_check(_field_events.size() == 1 and _field_events[0] == roster.spirits[1],
 			"Signal field_spirit_changed mit Slot-2-Daten")
-	_check(avatar.spirit == roster.spirits[1], "Feld-Avatar folgt dem Signal")
+	_check(entity.spirit == roster.spirits[1], "Feld-Spirit folgt dem Signal")
 	await _key(KEY_2)
 	_check(_field_events.size() == 1, "gleiche Taste erneut = kein doppeltes Signal")
 	await _key(KEY_3)

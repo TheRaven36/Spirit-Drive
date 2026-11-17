@@ -4,6 +4,27 @@ Neueste Einträge immer oben.
 
 ## Unreleased
 
+### 2026-11-17 – Phase 2B: Feld-Spirit als Kampf-Monster + Hard-Lock-Befehl
+**SpiritEntity (`scenes/spirits/spirit_entity.tscn`, ersetzt den schwebenden Platzhalter)**
+- Greybox-Kapsel (3,0 m / r 0,8 m) mit Visor vorne, gefärbt in der `theme_color` des Feld-Spirits mit leichtem
+  Glow. Spawnt 4,5 m neben dem Guardian; Taste 1/2/3 tauscht Daten + Farbe an Ort und Stelle (Scale-Pop).
+- Eigener Kollisions-Layer 2: Guardian-Raycasts, Seile und Messer ignorieren den Spirit.
+- Ist der Guardian > 60 m entfernt (Respawn, extremer Flug), wird der Spirit neben ihn versetzt.
+
+**KI (`FOLLOW_PROTECT`, `CHASE`, `ATTACK`)**
+- `FOLLOW_PROTECT`: folgt am Boden mit 4–6 m Abstand (weit weg: Aufhol-Tempo 32 m/s). Bodyguard: Gegner näher
+  als 8 m am Guardian wird angegriffen, losgelassen ab 11 m, danach zurück zum Guardian.
+- `CHASE`/`ATTACK`: Hard-Lock des Guardians = Fokus-Ziel (neues Signal `GuardianController.hard_lock_changed`),
+  Mausrad-Wechsel zieht den Spirit mit. In Reichweite alle 1,8 s ein Lunge (Vorpreschen + Strecken der Kapsel),
+  Treffer über die `Area3D`-Hitbox: 40 × Säulen-Multiplikator, Signal `hit_landed(target, damage, effect_tag)`
+  + `[SPIRIT]`-Log.
+- Lock-Taste halten (0,45 s, wie bisher) löst den Lock → Spirit kehrt in `FOLLOW_PROTECT` zurück.
+
+**Tests**
+- Neu: `tests/spirit_entity_test.gd` (Spawn/Farbe, Live-Wechsel 1 → 2, Follow-Abstand, Bodyguard,
+  Hard-Lock → CHASE/ATTACK + Schaden + Takt, Ziel-Wechsel, Säulen-Faktor, Halten = Rückruf).
+- Smoke- und Spirit-System-Test legen die Spirit-KI still, damit sie die Dummy-Messwerte nicht verfälscht.
+
 ### 2026-11-17 – Phase 2A: 9 Spirits, 3er-Roster & Minimal-HUD
 **Spirit-Daten**
 - Neue Resource `SpiritData` (`scripts/spirits/spirit_data.gd`): Name, Säule (`NATURE/ORDER/CYCLE`),
