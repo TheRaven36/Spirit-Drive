@@ -2,7 +2,7 @@
 
 Neueste Einträge immer oben.
 
-## Unreleased
+## v0.10 – Release 2026-11-18
 
 ### 2026-11-18 – Phase 3B: Damage-Number-Entzerrung, großer Tunnel, Elementar-Riesen
 **Damage Numbers**
