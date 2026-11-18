@@ -47,6 +47,7 @@ func _run() -> void:
 	await _test_controls_overlay()
 	await _test_damage_numbers()
 	await _test_armor_break()
+	_test_giant_affinities()
 
 	print("SPIRIT TEST: %s" % ("OK" if _fails == 0 else "%d FEHLER" % _fails))
 	quit(1 if _fails > 0 else 0)
@@ -371,14 +372,49 @@ func _test_damage_numbers() -> void:
 	_check(n.position.y < y0, "driftet nach oben")
 	await _frames(50)
 	# Zeitbasis = Alter der Zahl (Tween-/Prozess-Zeit, headless nicht synchron zu Physik-Frames).
-	await _until_age(n, 3.4)
-	_check(n.modulate.a == 1.0, "bis 3.5 s voll sichtbar (alpha %.2f)" % n.modulate.a)
-	await _until_age(n, 4.25)
-	_check(absf(n.modulate.a - 0.5) < 0.1, "3.5 - 5.0 s lineares Ausfaden (alpha %.2f bei 4.25 s)" % n.modulate.a)
-	await _until_age(n, 4.9)
-	_check(is_instance_valid(n), "lebt bis kurz vor 5.0 s")
-	await _until_age(n, 5.2)
-	_check(not is_instance_valid(n), "nach 5.0 s entfernt")
+	await _until_age(n, 2.4)
+	_check(n.modulate.a == 1.0, "bis 2.5 s voll sichtbar (alpha %.2f)" % n.modulate.a)
+	await _until_age(n, 2.75)
+	_check(absf(n.modulate.a - 0.5) < 0.1, "2.5 - 3.0 s schnelles Ausfaden (alpha %.2f bei 2.75 s)" % n.modulate.a)
+	await _until_age(n, 2.9)
+	_check(is_instance_valid(n), "lebt bis kurz vor 3.0 s")
+	await _until_age(n, 3.2)
+	_check(not is_instance_valid(n), "nach 3.0 s entfernt")
+	_test_number_separation(mgr)
+
+
+## Gleichzeitige Treffer an derselben Stelle: keine zwei Zahlen ueberlappen (auch Krits nicht).
+func _test_number_separation(mgr: DamageNumberManager) -> void:
+	for c in mgr.get_children():
+		c.free()
+	var cam := g.camera
+	var pos := g.global_position + Vector3(0, 1, -8)
+	var nums: Array[DamageNumber] = []
+	for dmg in [400.0, 380.0, 50.0, 20.0, 300.0, 120.0, 420.0, 90.0]:
+		nums.append(mgr.spawn(dmg, pos))
+	_check(nums[0].world_pos == pos, "erste Zahl exakt an der Trefferstelle")
+	# Pruefung auf dem Bildschirm: Text-Rechtecke (Endgroesse) duerfen sich nicht schneiden.
+	var to_cam := cam.global_transform.affine_inverse()
+	var depth := -(to_cam * pos).z
+	var overlaps := 0
+	var max_px := 0.0
+	var same_depth := true
+	var base_px := cam.unproject_position(pos)
+	for i in nums.size():
+		var ci := cam.unproject_position(nums[i].display_pos())
+		max_px = maxf(max_px, cam.unproject_position(nums[i].world_pos).distance_to(base_px))
+		same_depth = same_depth and absf(-(to_cam * nums[i].world_pos).z - depth) < 0.01
+		for j in range(i + 1, nums.size()):
+			var d := (cam.unproject_position(nums[j].display_pos()) - ci).abs()
+			var need := nums[i].half_extent() + nums[j].half_extent()
+			if d.x < need.x and d.y < need.y:
+				overlaps += 1
+	_check(overlaps == 0, "8 Zahlen am selben Punkt: keine Ueberlappung auf dem Bildschirm (Krits 2x gross)")
+	_check(same_depth and max_px < 400.0, "Versatz in der Bildebene (gleiche Tiefe), kompakt (max %.0f px)" % max_px)
+	var far := mgr.spawn(100.0, pos + Vector3(20, 0, 0))
+	_check(far.world_pos == pos + Vector3(20, 0, 0), "freie Stelle: kein Versatz")
+	for c in mgr.get_children():
+		c.free()
 
 
 func _until_age(n: DamageNumber, t: float) -> void:
@@ -387,18 +423,21 @@ func _until_age(n: DamageNumber, t: float) -> void:
 
 
 ## Ruestung: Stahl 1.5x gegen Panzerung, Elemente prallen ab; gebrochen -> Saeulen-Vorteil voll.
+## Wasser-Riese = NATURE -> Leben (CYCLE, Slot 3) hat Vorteil.
 func _test_armor_break() -> void:
 	print("Armor-Break (reiner Stahl)")
 	var k := g.knife
-	var giant: TrainingGiant = arena.get_node("GiantLarge")  # ORDER: Feuer (NATURE) hat Vorteil
+	var giant: TrainingGiant = arena.get_node("GiantLarge")
 	_check(giant.is_armored() and giant.armor_integrity == 500.0, "Riese gepanzert (500)")
 	k._swing_velocity = Vector3.ZERO
 	roster.set_weapon_spirit(SpiritRosterComponent.SOCKET_NONE)
 	var steel_m := k.element_multiplier(giant)
+	roster.set_weapon_spirit(2)
+	var life_m := k.element_multiplier(giant)
 	roster.set_weapon_spirit(0)
 	var fire_m := k.element_multiplier(giant)
-	_check(is_equal_approx(steel_m, 1.5) and is_equal_approx(fire_m, 1.0),
-			"gepanzert: Stahl 1.5x, Feuer 1.0x (Saeulen-Vorteil prallt ab)")
+	_check(is_equal_approx(steel_m, 1.5) and is_equal_approx(fire_m, 1.0) and is_equal_approx(life_m, 1.0),
+			"gepanzert: Stahl 1.5x, Leben/Feuer 1.0x (Saeulen-Vorteil prallt ab)")
 	# Echte Treffer: Schaden geht in die Ruestung, HP bleiben
 	var hp0 := giant.hp
 	var a0 := giant.armor_integrity
@@ -418,15 +457,50 @@ func _test_armor_break() -> void:
 	k._deal(giant, 1.0, Vector3.FORWARD, giant.global_position)
 	_check(broken[0] and not giant.is_armored() and giant.hp < hp0, "Armor-Broken: Signal, Restschaden auf HP")
 	_check(is_equal_approx(k.element_multiplier(giant), 1.0), "gebrochen: Stahl ohne Ruestungs-Bonus 1.0x")
+	roster.set_weapon_spirit(2)
+	_check(is_equal_approx(k.element_multiplier(giant), 1.5), "gebrochen: Leben vs NATURE voller Vorteil 1.5x")
 	roster.set_weapon_spirit(0)
-	_check(is_equal_approx(k.element_multiplier(giant), 1.5), "gebrochen: Feuer vs ORDER voller Vorteil 1.5x")
-	var sp: SpiritEntity = g.get_node("SpiritEntity")
-	_check(is_equal_approx(SpiritRosterComponent.pillar_factor_against(sp.spirit.pillar, giant), 1.5)
-			and is_equal_approx(SpiritRosterComponent.pillar_factor_against(
-				sp.spirit.pillar, arena.get_node("TitanColossus")), 1.0),
-			"Feld-Spirit: gepanzerter Titan 1.0x, gebrochener Riese 1.5x")
+	var cyc := SpiritData.Pillar.CYCLE
+	_check(is_equal_approx(SpiritRosterComponent.pillar_factor_against(cyc, giant), 1.5)
+			and is_equal_approx(SpiritRosterComponent.pillar_factor_against(cyc, arena.get_node("TitanColossus")), 1.0),
+			"Feld-Spirit (CYCLE): gepanzerter Titan 1.0x, gebrochener Riese 1.5x")
 	giant.hp = giant.max_hp
 	giant.armor_integrity = giant.max_armor
+
+
+## Elementar-Riesen: festes NATURE-Element + Glow in der Spirit-Signalfarbe; Treffer wenden den
+## Saeulen-Faktor des Sockels an und erscheinen als Damage-Number.
+func _test_giant_affinities() -> void:
+	print("Elementar-Riesen")
+	var expect := {
+		"TrainingGiant": SpiritData.Element.FIRE, "GiantLarge": SpiritData.Element.WATER,
+		"TitanColossus": SpiritData.Element.EARTH,
+	}
+	for giant_name: String in expect:
+		var gi: TrainingGiant = arena.get_node(giant_name)
+		var col := SpiritLibrary.get_spirit(expect[giant_name]).theme_color
+		_check(gi.element == expect[giant_name] and gi.get_spirit_pillar() == SpiritData.Pillar.NATURE
+				and gi.element_color() == col and gi._mat.emission.is_equal_approx(col * TrainingGiant.GLOW_ENERGY),
+				"%s: %s (NATURE), Glow %s" % [gi.display_name, SpiritData.Element.keys()[gi.element], col.to_html(false)])
+	var fire_giant: TrainingGiant = arena.get_node("TrainingGiant")
+	fire_giant.armor_integrity = 0.0
+	var mgr: DamageNumberManager = world.get_node("DamageNumbers")
+	var k := g.knife
+	k._swing_velocity = Vector3.ZERO
+	# Sockel -> erwarteter Faktor gegen NATURE: Feuer 1.0, Licht (ORDER) 0.75, Leben (CYCLE) 1.5
+	for case: Array in [[0, 1.0], [1, 0.75], [2, 1.5]]:
+		roster.set_weapon_spirit(case[0])
+		var before := mgr.get_child_count()
+		k._deal(fire_giant, 1.0, Vector3.FORWARD, fire_giant.global_position + Vector3(0, 8, 2))
+		var num := mgr.get_child(mgr.get_child_count() - 1) as DamageNumber
+		_check(is_equal_approx(k.last_hit.element_mult, case[1]) and mgr.get_child_count() == before + 1
+				and num.text == str(roundi(k.last_hit.damage)),
+				"%s vs Feuer-Riese: x%.2f -> Zahl %s" % [roster.weapon_spirit().spirit_name, case[1], num.text])
+	roster.set_weapon_spirit(0)
+	fire_giant.hp = fire_giant.max_hp
+	fire_giant.armor_integrity = fire_giant.max_armor
+	for c in mgr.get_children():
+		c.free()
 
 
 # --- Helfer ---------------------------------------------------------------

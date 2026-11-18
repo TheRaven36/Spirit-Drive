@@ -43,18 +43,30 @@ func _test_geometry() -> void:
 	for p in pts:
 		ys.append(p.y)
 		xs.append(p.x)
-	_check(tunnel.length > 95.0 and tunnel.length < 115.0, "~100 m lang (%.1f m)" % tunnel.length)
-	_check(xs.max() > 8.0 and xs.min() < -8.0, "S-Kurve links/rechts (x %.1f .. %.1f m)" % [xs.min(), xs.max()])
-	_check(ys.max() > 20.0, "steil hoch und wieder runter (Scheitel %.1f m)" % ys.max())
+	_check(tunnel.length > 170.0 and tunnel.length < 195.0, "Laenge %.1f m" % tunnel.length)
+	_check(xs.max() > 14.0 and xs.min() < -14.0, "S-Kurve links/rechts (x %.1f .. %.1f m)" % [xs.min(), xs.max()])
+	_check(ys.max() > 30.0, "steil hoch und wieder runter (Scheitel %.1f m)" % ys.max())
+	_check(2.0 * OrganicTransitionTunnel.RADIUS_X >= 22.0 and 2.0 * OrganicTransitionTunnel.RADIUS_Y >= 18.0,
+			"Querschnitt %.0f m breit x %.0f m hoch" % [2.0 * OrganicTransitionTunnel.RADIUS_X,
+				2.0 * OrganicTransitionTunnel.RADIUS_Y])
+	# Wand-Abstand an vielen Stellen: seitlich RADIUS_X, oben/unten RADIUS_Y (keine Faltung, keine Loecher)
 	var walls := 0
-	for f in [0.15, 0.5, 0.85]:
-		var xf := curve.sample_baked_with_rotation(tunnel.length * f)
+	var rays := 0
+	var off := 6.0
+	while off < tunnel.length - 6.0:
+		var xf := curve.sample_baked_with_rotation(off)
 		var o := tunnel.to_global(xf.origin)
-		for d: Vector3 in [xf.basis.x, -xf.basis.x, xf.basis.y, -xf.basis.y]:
-			var hit := _cast(o, o + tunnel.global_basis * d * 20.0)
-			if not hit.is_empty() and absf((hit.position as Vector3).distance_to(o) - 5.0) < 0.5:
+		for d: Array in [[xf.basis.x, 12.0], [-xf.basis.x, 12.0], [xf.basis.y, 9.0], [-xf.basis.y, 9.0]]:
+			rays += 1
+			var hit := _cast(o, o + tunnel.global_basis * (d[0] as Vector3) * 40.0)
+			# Treffer auf einen Felsvorsprung (steht von der Wand ab) zaehlt ebenfalls als dicht.
+			if not hit.is_empty() and (absf((hit.position as Vector3).distance_to(o) - d[1]) < 0.6
+					or hit.collider == tunnel.get_node("Ledges")):
 				walls += 1
-	_check(walls == 12, "Innenwand mit Collision ueberall (%d/12 Strahlen auf ~5 m)" % walls)
+		off += 6.0
+	_check(walls == rays, "Innenwand ueberall dicht: %d/%d Strahlen auf 12 m / 9 m" % [walls, rays])
+	var cap := _cast(Vector3(0, 15, 140), Vector3(0, 15, 160))
+	_check(not cap.is_empty() and absf(cap.position.z - 149.5) < 0.6, "End-Platte schliesst ueber dem Tor ab")
 	_check(tunnel.get_node("Ledges").get_child_count() == OrganicTransitionTunnel.LEDGES.size(),
 			"%d Felsvorspruenge als Anker" % OrganicTransitionTunnel.LEDGES.size())
 	_check(tunnel.is_barrier_open(A) and not tunnel.is_barrier_open(B), "Start: Barriere Hoehle offen, Homebase zu")

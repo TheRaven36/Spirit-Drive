@@ -124,14 +124,14 @@ func _test_cave() -> void:
 	var mite: Array = arena.STALAGMITES[0]
 	var over := _cast(Vector3(mite[0], ceil_y - 1.0, mite[1]), Vector3(mite[0], -1, mite[1]))
 	_check(not over.is_empty() and absf(over.position.y - mite[3]) < 0.05, "Stalagmit ragt %.0f m auf" % mite[3])
-	# Drei Riesen: 1.0x NATURE, 1.4x ORDER, 2.0x CYCLE
+	# Drei Riesen: 1.0x Feuer, 1.4x Wasser, 2.0x Erde (alle NATURE)
 	var std: TrainingGiant = arena.get_node("TrainingGiant")
 	var big: TrainingGiant = arena.get_node("GiantLarge")
 	var titan: TrainingGiant = arena.get_node("TitanColossus")
-	_check(std.size_scale == 1.0 and std.get_spirit_pillar() == SpiritData.Pillar.NATURE
-			and big.size_scale == 1.4 and big.get_spirit_pillar() == SpiritData.Pillar.ORDER
-			and titan.size_scale == 2.0 and titan.get_spirit_pillar() == SpiritData.Pillar.CYCLE,
-			"3 Riesen: 1.0x NATURE, 1.4x ORDER, 2.0x CYCLE")
+	_check(std.size_scale == 1.0 and std.element == SpiritData.Element.FIRE
+			and big.size_scale == 1.4 and big.element == SpiritData.Element.WATER
+			and titan.size_scale == 2.0 and titan.element == SpiritData.Element.EARTH,
+			"3 Riesen: 1.0x Feuer, 1.4x Wasser, 2.0x Erde")
 	_check(is_equal_approx(titan.height(), 2.0 * std.height()), "Titan doppelt so hoch (%.1f m)" % titan.height())
 	var head := _cast(titan.global_position + Vector3(0, ceil_y - 1.0, 0), titan.global_position)
 	_check(not head.is_empty() and absf(head.position.y - titan.height()) < 0.1,

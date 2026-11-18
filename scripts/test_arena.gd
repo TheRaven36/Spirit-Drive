@@ -7,7 +7,8 @@ extends Node3D
 ##     Tor in der +Z-Wand (DOOR_*) zum OrganicTransitionTunnel (Richtung Homebase).
 ##   - Stalagmiten (Boden), Stalaktiten (Decke, Anker fuer Decken-Schwuenge) und
 ##     durchgehende Mega-Saeulen Boden -> Decke (vertikale Katapult-Pfade).
-##   - Drei Riesen fuer den Massstab: 1.0x NATURE, 1.4x ORDER, 2.0x CYCLE (Titan).
+##   - Drei Riesen fuer den Massstab, je mit festem NATURE-Element + Glow:
+##     1.0x Feuer, 1.4x Wasser, 2.0x Erde (Titan).
 ##
 ## Performance-Gesetz: je Form EIN MultiMeshInstance3D (Bloecke, Hoehlenhuelle, Zylinder =
 ## 3 Draw Calls), alle teilen sich EINEN StaticBody3D mit mehreren Collision-Shapes.
@@ -26,11 +27,11 @@ const COL_ROCK := Color(0.8, 0.74, 0.66)
 const DOOR_WIDTH := 10.0
 const DOOR_HEIGHT := 10.0
 
-## Riesen: [name, position, groesse, saeule, anzeigename]
+## Riesen: [name, position, groesse, element, anzeigename]
 const GIANTS := [
-	["TrainingGiant", Vector3(0, 0, -95), 1.0, SpiritData.Pillar.NATURE, "RIESE"],
-	["GiantLarge", Vector3(100, 0, -80), 1.4, SpiritData.Pillar.ORDER, "GROSSER RIESE"],
-	["TitanColossus", Vector3(90, 0, 60), 2.0, SpiritData.Pillar.CYCLE, "TITAN"],
+	["TrainingGiant", Vector3(0, 0, -95), 1.0, SpiritData.Element.FIRE, "FEUER-RIESE"],
+	["GiantLarge", Vector3(100, 0, -80), 1.4, SpiritData.Element.WATER, "WASSER-RIESE"],
+	["TitanColossus", Vector3(90, 0, 60), 2.0, SpiritData.Element.EARTH, "ERD-TITAN"],
 ]
 ## Durchgehende Mega-Saeulen Boden -> Decke: [x, z, radius]
 const MEGA_PILLARS := [[40.0, 115.0, 6.0], [-125.0, 40.0, 5.0], [125.0, -15.0, 5.5]]
@@ -223,7 +224,7 @@ func _spawn_giants() -> void:
 		giant.name = g[0]
 		giant.position = g[1]
 		giant.size_scale = g[2]
-		giant.pillar = g[3]
+		giant.element = g[3]
 		giant.display_name = g[4]
 		giant.max_hp *= g[2]
 		var to_center := -(g[1] as Vector3)

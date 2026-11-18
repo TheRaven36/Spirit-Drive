@@ -33,9 +33,10 @@ scripts/
   ui/                       MinimalHUD + Widgets (HookIndicator, SpiritSlot),
                             DamageNumberManager (Treffer -> Zahl an der Trefferstelle)
   test_arena.gd             Geschlossene Greybox-Hoehle (MultiMesh je Form, ein StaticBody3D),
-                            Stalagmiten/Stalaktiten/Mega-Saeulen, 3 Riesen (1.0x/1.4x/2.0x)
+                            Stalagmiten/Stalaktiten/Mega-Saeulen, 3 Elementar-Riesen
+                            (Feuer 1.0x, Wasser 1.4x, Erde 2.0x)
   training_dummy.gd         Trainings-Ziel
-  training_giant.gd         Test-Gegner mit LockPoints, size_scale + Saeule
+  training_giant.gd         Test-Gegner mit LockPoints, size_scale, Element (Saeule + Glow), Ruestung
 data/spirits/               Die 9 Basis-Spirits (.tres)
 assets/shaders|models|textures
 tests/movement_smoke_test.gd  Headless-Smoke-Test (Exit-Code 0 = ok)

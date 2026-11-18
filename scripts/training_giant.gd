@@ -3,7 +3,8 @@ extends StaticBody3D
 ## Grosser Test-Gegner (~14 m x size_scale) mit mehreren Lock-Punkten (LockPoint) fuer
 ## Hard-Lock und Mausrad-Ziel-Wechsel. Baut Koerper, Kollision und Punkte selbst –
 ## size_scale skaliert Teile, Shapes und Punkte direkt (kein skalierter Physik-Body).
-## Steht mit dem Gesicht in +Z. Hat eine Saeule (get_spirit_pillar) fuer Element-Faktoren.
+## Steht mit dem Gesicht in +Z. Festes Element (element): Saeule fuer die Element-Faktoren
+## (get_spirit_pillar) und Signalfarbe (theme_color des gleichnamigen Spirits) als Glow.
 ## Ruestung (armor_integrity): Treffer gehen zuerst in die Ruestung. Solange sie steht, prallen
 ## Elementar-Faktoren ab (nur reiner Stahl bricht sie mit Bonus), danach "Armor-Broken".
 
@@ -13,6 +14,10 @@ signal armor_broken
 const FLASH_TIME := 0.15
 const DMG_SHOW_TIME := 1.5
 const LABEL_HEIGHT := 15.0
+## Element-Glow: Leuchten in der Element-Farbe traegt die Farbe, die Albedo ist abgedunkelt –
+## sonst waescht das Filmic-Tonemapping helle Albedo + Glow zu Pastell aus.
+const GLOW_ENERGY := 1.0
+const ALBEDO_DARKEN := 0.6
 
 @export var max_hp := 3000.0
 @export var respawn_time := 4.0
@@ -21,7 +26,7 @@ const LABEL_HEIGHT := 15.0
 @export var max_hit_fraction := 0.15
 ## Groessen-Faktor (1.0 = Standard-Riese, 2.0 = Titan).
 @export var size_scale := 1.0
-@export var pillar: SpiritData.Pillar = SpiritData.Pillar.NATURE
+@export var element: SpiritData.Element = SpiritData.Element.FIRE
 @export var display_name := "RIESE"
 @export var max_armor := 500.0
 
@@ -32,6 +37,7 @@ var last_point := ""
 var armor_integrity := 0.0
 
 var _mat: StandardMaterial3D
+var _glow := Color.BLACK
 var _label: Label3D
 var _meshes: Array[MeshInstance3D] = []
 var _shapes := {}
@@ -65,9 +71,12 @@ const POINTS := [
 func _ready() -> void:
 	hp = max_hp
 	armor_integrity = max_armor
+	var col := element_color()
+	_glow = col * GLOW_ENERGY
 	_mat = StandardMaterial3D.new()
-	_mat.albedo_color = Color(0.75, 0.35, 0.35)
+	_mat.albedo_color = col.darkened(ALBEDO_DARKEN)
 	_mat.emission_enabled = true
+	_mat.emission = _glow
 	var s := size_scale
 	for p: Array in PARTS:
 		_add_part(p[0], p[1] == "box", p[2] * s, p[3] * s)
@@ -130,7 +139,12 @@ func is_armored() -> bool:
 
 
 func get_spirit_pillar() -> SpiritData.Pillar:
-	return pillar
+	return SpiritData.ELEMENT_PILLAR[element]
+
+
+## Signalfarbe des Elements (= theme_color des gleichnamigen Spirits).
+func element_color() -> Color:
+	return SpiritLibrary.get_spirit(element).theme_color
 
 
 ## Gesamthoehe = Scheitel des Kopfes (letzter PARTS-Eintrag: Mitte + Radius).
@@ -171,7 +185,7 @@ func take_hit(damage: float, _dir: Vector3, source: Node) -> void:
 
 func _process(delta: float) -> void:
 	_flash = maxf(_flash - delta, 0.0)
-	_mat.emission = Color.WHITE * (_flash / FLASH_TIME) * 2.0
+	_mat.emission = _glow + Color.WHITE * (_flash / FLASH_TIME) * 2.0
 	if _dmg_show > 0.0:
 		_dmg_show -= delta
 		if _dmg_show <= 0.0:

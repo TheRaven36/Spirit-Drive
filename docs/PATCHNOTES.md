@@ -4,6 +4,36 @@ Neueste Einträge immer oben.
 
 ## Unreleased
 
+### 2026-11-18 – Phase 3B: Damage-Number-Entzerrung, großer Tunnel, Elementar-Riesen
+**Damage Numbers**
+- Lebensdauer 3,0 s: 0,1 s Pop → bis 2,5 s voll sichtbar → 0,5 s schnelles lineares Ausfaden.
+- Anti-Overlap im `DamageNumberManager`: Überdeckt eine neue Zahl auf dem Bildschirm eine lebende Zahl
+  (Multi-Hit, mehrere Ziele), rückt sie auf einer Spirale (zufälliger Startwinkel) nach außen, bis ihr
+  Text-Rechteck frei ist. Gerechnet in Pixeln mit der echten Textgröße (Krits doppelt so groß), Versatz in
+  derselben Tiefe zurück in 3D projiziert – die Zahl hängt weiter im Raum. Der alte Zufalls-Jitter entfällt.
+  (Ein fester Welt-Versatz von ±1,5 m reichte aus der Distanz nicht: im Test überlappten 420/380/250.)
+
+**OrganicTransitionTunnel**
+- Elliptischer Querschnitt **24 m breit × 18 m hoch** (vorher Ø 10 m). Damit sich die breite Röhre in den
+  Biegungen nicht selbst schneidet, ist die S-Kurve weiter: ±18 m seitlich, Scheitel 36 m, Länge 183 m
+  (vorher 103 m; eine kompaktere Variante riss an den Biegungen Löcher in die Röhre).
+- End-Platten mit 10 × 10 m-Tor an beiden Enden (CSG) – die 18 m hohe Röhre ragt sonst über das
+  Homebase-Dach ins Leere. Barrieren sind jetzt torgroß, Felsvorsprünge 3 × 1,5 × 3 m.
+
+**Elementar-Riesen**
+- `TrainingGiant.element` ersetzt `pillar`: Säule über `SpiritData.ELEMENT_PILLAR`, Farbe = `theme_color` des
+  gleichnamigen Spirits als Glow (Albedo abgedunkelt, sonst wäscht das Tonemapping zu Pastell aus).
+- Feuer-Riese 1,0× (rot), Wasser-Riese 1,4× (cyan), Erd-Titan 2,0× (ocker) – alle NATURE. Gegen sie:
+  Leben/Zeit/Tod (CYCLE) 1,5×, Feuer/Wasser/Erde 1,0×, Licht/Schatten/Schwerkraft (ORDER) 0,75× (nach dem
+  Rüstungsbruch).
+
+**Tests**
+- Spirit-System: 3-s-Timing, 8 gleichzeitige Zahlen am selben Punkt ohne Bildschirm-Überlappung (in der
+  Bildebene, kompakt), freie Stelle ohne Versatz; Elemente/Säule/Glow der 3 Riesen; Feuer/Licht/Leben-Sockel
+  gegen den Feuer-Riesen (1,0 / 0,75 / 1,5) inkl. Damage-Number; Armor-Test auf NATURE-Riesen umgestellt.
+- Tunnel: Querschnitt, Wand-Abstand alle 6 m (12 m seitlich / 9 m oben-unten, Felsvorsprünge zählen),
+  End-Platte über dem Tor. Smoke: Riesen-Elemente.
+
 ### 2026-11-17 – Fix: start_game.bat bricht bei lokal umgeschriebener project.godot ab
 - Der Godot-Editor schreibt `project.godot` lokal um; ändert ein Commit dieselbe Datei (Phase 3A: Hauptszene
   `world.tscn`), scheiterte `git pull`. `start_game.bat` setzt `project.godot` jetzt vor jedem Pull auf den

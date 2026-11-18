@@ -2,10 +2,13 @@ class_name OrganicTransitionTunnel
 extends Node3D
 ## Organischer 3D-Grapple-Tunnel zwischen zwei Arealen (Seite A = EntryAnchor, B = ExitAnchor).
 ##
-## Geometrie: S-Kurve (links/rechts UND steil hoch/runter, ~105 m), die die Sichtlinie bricht.
-##   Roehre = CSGPolygon3D entlang Path3D (aussen) minus etwas laengere Innen-Roehre -> offene
-##   Enden, Innenflaeche mit Collision (Grapple-Anker ueberall). Felsvorspruenge an den
-##   Kurven-Scheiteln (links, rechts, Decke) als zusaetzliche Anker (ein MultiMesh, ein Body).
+## Geometrie: S-Kurve (links/rechts UND steil hoch/runter, ~183 m), die die Sichtlinie bricht.
+##   Elliptischer Querschnitt 24 m breit x 18 m hoch (Schwing-Raum). Roehre = CSGPolygon3D
+##   entlang Path3D (aussen) minus etwas laengere Innen-Roehre; an beiden Enden schliesst eine
+##   Platte mit Tor (DOOR_SIZE, passt zu Hoehlen- und Homebase-Tor) ab. Innenflaeche mit
+##   Collision (Grapple-Anker ueberall). Felsvorspruenge an den Kurven-Scheiteln (links, rechts,
+##   Decke) als zusaetzliche Anker (ein MultiMesh, ein Body).
+##   Kurve so weit, dass sich die breite Roehre in den Biegungen nicht selbst schneidet.
 ##
 ## Loading Gate (Fortschritt = naechster Kurven-Offset des Guardians):
 ##   1. Guardian betritt die Roehre an Seite X -> Ziel-Szene der anderen Seite wird per
@@ -20,17 +23,21 @@ signal area_unloaded(end: int)
 
 enum End { A, B }
 
-const RADIUS := 5.0
+## Innen-Halbachsen der Ellipse: 24 m breit, 18 m hoch. Boden der Enden = Areal-Boden.
+const RADIUS_X := 12.0
+const RADIUS_Y := 9.0
 const WALL := 1.0
+## Tor in den End-Platten (Breite, Hoehe; ab Roehren-Boden).
+const DOOR_SIZE := Vector2(10, 10)
 ## Innen-Roehre ragt an beiden Enden so weit hinaus -> keine End-Kappen.
 const INNER_EXTENSION := 2.0
 const RING_SEGMENTS := 24
 const PATH_INTERVAL := 2.0
 ## Kurven-Stuetzpunkte (lokal; Start bei A Richtung +Z, Ende bei B Richtung +Z). Das Ende
-## (z = 70) bestimmt den ExitAnchor in organic_transition_tunnel.tscn (z = 70 + 13).
+## (z = 140) bestimmt End-Platte B und den ExitAnchor in organic_transition_tunnel.tscn (z = 140 + 13).
 const POINTS := [
-	Vector3(0, 0, 0), Vector3(0, 0, 5), Vector3(11, 9, 19), Vector3(0, 24, 34),
-	Vector3(-11, 9, 49), Vector3(0, 0, 63), Vector3(0, 0, 70),
+	Vector3(0, 0, 0), Vector3(0, 0, 10), Vector3(18, 12, 40), Vector3(0, 36, 70),
+	Vector3(-18, 12, 100), Vector3(0, 0, 130), Vector3(0, 0, 140),
 ]
 ## Areal wird entladen, sobald der Guardian diesen Anteil der Laenge von seiner Seite zurueckgelegt hat.
 const BEND_FRACTION := 0.35
@@ -41,7 +48,7 @@ const LEDGES := [
 	[0.2, Vector2(-1, 0)], [0.33, Vector2(0, 1)], [0.45, Vector2(1, 0)],
 	[0.55, Vector2(0, 1)], [0.67, Vector2(-1, 0)], [0.8, Vector2(1, 0)],
 ]
-const LEDGE_SIZE := Vector3(2.2, 1.2, 2.2)
+const LEDGE_SIZE := Vector3(3.0, 1.5, 3.0)
 const COL_LEDGE := Color(0.8, 0.72, 0.6)
 const COL_BARRIER := Color(0.3, 0.85, 1.0, 0.35)
 
@@ -123,26 +130,26 @@ func _build_ledges() -> void:
 func _ledge_transform(fraction: float, side: Vector2) -> Transform3D:
 	var frame := _path_outer.curve.sample_baked_with_rotation(length * fraction)
 	var dir := (frame.basis.x * side.x + frame.basis.y * side.y).normalized()
-	return Transform3D(frame.basis, frame.origin + dir * (RADIUS - LEDGE_SIZE.y * 0.25))
+	var r := RADIUS_X if absf(side.x) > absf(side.y) else RADIUS_Y
+	return Transform3D(frame.basis, frame.origin + dir * (r - LEDGE_SIZE.y * 0.25))
 
 
+## Energie-Barriere direkt hinter dem Tor der End-Platte (Tor-gross, Boden = Roehren-Boden).
 func _make_barrier(end: int) -> StaticBody3D:
-	var off := 0.5 if end == End.A else length - 0.5
+	var off := 1.0 if end == End.A else length - 1.0
 	var frame := _path_outer.curve.sample_baked_with_rotation(off)
 	var body := StaticBody3D.new()
 	body.name = "Barrier" + ("A" if end == End.A else "B")
-	# Zylinder-Achse (Y) entlang der Roehre drehen.
-	body.transform = Transform3D(frame.basis * Basis(Vector3.RIGHT, PI * 0.5), frame.origin)
-	var shape := CylinderShape3D.new()
-	shape.radius = RADIUS
-	shape.height = 0.4
+	var door_center := frame.basis.y * (DOOR_SIZE.y * 0.5 - RADIUS_Y)
+	body.transform = Transform3D(frame.basis, frame.origin + door_center)
+	var size := Vector3(DOOR_SIZE.x, DOOR_SIZE.y, 0.4)
+	var shape := BoxShape3D.new()
+	shape.size = size
 	var col := CollisionShape3D.new()
 	col.shape = shape
 	body.add_child(col)
-	var mesh := CylinderMesh.new()
-	mesh.top_radius = RADIUS
-	mesh.bottom_radius = RADIUS
-	mesh.height = 0.2
+	var mesh := BoxMesh.new()
+	mesh.size = Vector3(size.x, size.y, 0.2)
 	var mat := StandardMaterial3D.new()
 	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
@@ -180,7 +187,7 @@ func progress_of(world_pos: Vector3) -> float:
 	var local := to_local(world_pos)
 	var curve := _path_outer.curve
 	var off := curve.get_closest_offset(local)
-	var inside := local.distance_to(curve.sample_baked(off)) <= RADIUS + WALL \
+	var inside := local.distance_to(curve.sample_baked(off)) <= maxf(RADIUS_X, RADIUS_Y) + WALL \
 			and off > ENTER_MARGIN and off < length - ENTER_MARGIN
 	return off if inside else -1.0
 

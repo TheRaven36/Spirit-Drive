@@ -93,7 +93,7 @@ radius = 0.25
 [node name="TestArena" parent="Areas" instance=ExtResource("14_arena")]
 
 [node name="Tunnel" parent="Areas" instance=ExtResource("15_tunnel")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 5, 150)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 9, 150)
 area_a_path = NodePath("../TestArena")
 guardian_path = NodePath("../../Guardian")
 
