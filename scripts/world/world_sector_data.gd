@@ -18,6 +18,9 @@ enum CampUnlockState { UNDISCOVERED, LOCKED, AVAILABLE_FOR_BUILD, TIER_1, UPGRAD
 @export var display_name := ""
 @export var region := Region.STEM
 @export_file("*.tscn") var scene_path := ""
+## Lage auf der Karte (Minimap). Die Sektoren docken zur Laufzeit relativ aneinander an und haben
+## keine gemeinsamen Welt-Koordinaten – daher feste Kartenpositionen (Einheit frei, y = Sueden).
+@export var map_position := Vector2.ZERO
 ## Abseitige Sackgassen-Nische (Schlaf-/Rohstoff-Spot), nicht Teil des Rundlaufs.
 @export var dead_end := false
 ## Freie Platzhalter-Metadaten fuer spaetere Systeme (z. B. "hidden_adds", "flying_grapple_minions").

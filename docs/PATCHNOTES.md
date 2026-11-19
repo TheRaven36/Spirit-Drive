@@ -4,6 +4,21 @@ Neueste Einträge immer oben.
 
 ## Unreleased
 
+### 2026-11-19 – Minimap + Vollkarte
+- **Minimap** unten rechts (immer an): Ausschnitt um den aktuellen Sektor und alle angrenzenden Sektoren,
+  der Rest der Karte abgedunkelt. Der Ausschnitt gleitet beim Sektorwechsel weich mit.
+- **Vollkarte** (M / D-Pad hoch, `toggle_map`): ganzes Kleeblatt mit allen Sektornamen als Overlay.
+- Sektoren farbig nach Region (kleiner = Dead-End-Nische), weißer Ring = aktueller Sektor, Quadrat = Lager
+  (gefüllt = gebaut), rote Linie = gesperrter Übergang, Pfeil = Einbahnstraße; Monster-Pfade nicht sichtbar.
+- Spieler-Punkt: im Sektor auf dessen Kartenposition, im Übergang anteilig entlang der Verbindung.
+- Da die Sektoren zur Laufzeit relativ aneinander andocken, hat jeder Sektor eine feste Kartenposition
+  (`WorldSectorData.map_position`, Kleeblatt-Layout: HQ unten, Stängel hoch zum Zentrum, 4 Blätter).
+- `WorldMapManager.current_sector()` / `gates()` als Abfragen für die Karte.
+- Fix Loading Gate: Wer zum ersten Mal mitten in einem Übergang auftaucht, galt fälschlich als „von der
+  leeren Seite kommend“ (Ziel wurde nie geladen). Jetzt endet ein Durchgang nur, wenn man ihn an einem Ende
+  verlässt oder weit weg ist (Reset/Teleport); wer mitten drin herausschwingt, setzt ihn fort.
+- Neuer Test `tests/minimap_test.gd`; Transition-Test prüft das Herausschwingen auf dem langen Weg.
+
 ### 2026-11-19 – Phase 3G: Einbahn-Blockaden behoben, Felspass-Varianten, lange Wege
 **Unsichtbare Einbahn-Blockaden (3 Ursachen)**
 - **Ungebaute Lager:** Das ausgeblendete Camp-Prefab (Zentrumslager + 4 Vorposten) behielt seine CSG-Wände –

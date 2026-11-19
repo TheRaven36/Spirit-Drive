@@ -22,6 +22,7 @@ extends RefCounted
 ##   Q / LB, E / RB ..... cycle_weapon_spirit_prev / _next (Waffen-Sockel wechseln)
 ##   + / Num+ ........... toggle_controls_overlay (Tastenbelegung ein/aus)
 ##   F / Y .............. interact (Homebase-Stationen oeffnen/schliessen)
+##   M / D-Pad hoch ..... toggle_map (ganze Karte ein/aus; Minimap unten rechts ist immer da)
 
 const DEADZONE := 0.2
 
@@ -52,6 +53,7 @@ const BINDINGS := {
 	# "+" ueber das Tasten-Label (Layout-unabhaengig: DE-Plus-Taste) + Ziffernblock.
 	"toggle_controls_overlay": [["label", KEY_PLUS], ["key", KEY_KP_ADD]],
 	"interact": [["key", KEY_F], ["joy", JOY_BUTTON_Y]],
+	"toggle_map": [["key", KEY_M], ["joy", JOY_BUTTON_DPAD_UP]],
 }
 
 

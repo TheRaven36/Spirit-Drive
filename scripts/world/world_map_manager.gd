@@ -78,6 +78,30 @@ func gate_for(link: SectorLink) -> SeamlessLoadingGate:
 	return g if is_instance_valid(g) else null
 
 
+func gates() -> Array[SeamlessLoadingGate]:
+	var out: Array[SeamlessLoadingGate] = []
+	for l: SectorLink in _gates:
+		if gate_for(l) != null:
+			out.append(gate_for(l))
+	return out
+
+
+## Sektor, in dem body gerade ist: im Uebergang die naehere Seite, sonst der naechste geladene Sektor.
+func current_sector(body: Node3D) -> StringName:
+	for g in gates():
+		var p := g.progress_of(body.global_position)
+		if p >= 0.0:
+			return g.sector_a if p < g.length * 0.5 else g.sector_b
+	var best: StringName
+	var best_d := INF
+	for id: StringName in _loaded:
+		var n := sector_node(id)
+		if n != null and n.global_position.distance_to(body.global_position) < best_d:
+			best_d = n.global_position.distance_to(body.global_position)
+			best = id
+	return best
+
+
 # --- Streaming-Kette ---------------------------------------------------------
 func _register_gate(gate: SeamlessLoadingGate, link: SectorLink) -> void:
 	if link == null:

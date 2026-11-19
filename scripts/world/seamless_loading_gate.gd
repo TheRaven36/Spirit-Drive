@@ -31,6 +31,8 @@ const BEND_FRACTION := 0.35
 ## Kehrt der Guardian nach dem Entladen bis auf diesen Anteil zur Herkunft zurueck, wird sie neu geladen
 ## (kleiner als BEND_FRACTION -> kein Hin-und-her-Laden an der Schwelle).
 const RETURN_FRACTION := 0.2
+## Weiter als capture * LEAVE_FACTOR vom Weg entfernt = Durchgang verlassen (Reset, Teleport, Absturz).
+const LEAVE_FACTOR := 2.0
 ## Erst so tief im Durchgang zaehlt der Guardian als "drin" (m ab Ende).
 const ENTER_MARGIN := 3.0
 const WALL := 1.0
@@ -73,6 +75,8 @@ var travel_from := -1
 ## Dieser Durchgang laedt/entlaedt (false = Einbahnstrasse aus der falschen Richtung betreten).
 var _pass_active := false
 var _origin_unloaded := false
+## Letzter Kurven-Offset des Guardians im Durchgang (0 = Ende A, also "am Ende").
+var _last_progress := 0.0
 
 var _areas: Array[Node3D] = [null, null]
 var _loading: Array[bool] = [false, false]
@@ -241,8 +245,7 @@ func sector_at(end: int) -> StringName:
 func progress_of(world_pos: Vector3) -> float:
 	var local := to_local(world_pos)
 	var off := curve.get_closest_offset(local)
-	var radius := capture_radius if capture_radius > 0.0 else maxf(cross_section.x, cross_section.y) * 0.5 + WALL
-	var inside := local.distance_to(curve.sample_baked(off)) <= radius \
+	var inside := local.distance_to(curve.sample_baked(off)) <= _capture() \
 			and off > ENTER_MARGIN and off < length - ENTER_MARGIN
 	return off if inside else -1.0
 
@@ -252,10 +255,14 @@ func _physics_process(_delta: float) -> void:
 		return
 	var p := progress_of(_guardian.global_position)
 	if p < 0.0:
-		travel_from = -1
+		# An einem Ende verlassen (oder weit weg, z. B. Reset/Teleport) beendet den Durchgang; wer
+		# mitten drin herausschwingt (offene Paesse), setzt ihn beim Wiedereintritt fort.
+		if _near_end(_last_progress) or _distance_to_path(_guardian.global_position) > _capture() * LEAVE_FACTOR:
+			travel_from = -1
 		return
+	_last_progress = p
 	if travel_from == -1:
-		_enter(p)
+		_enter(End.A if p < length * 0.5 else End.B)
 	if not _pass_active:
 		return
 	var travelled := p if travel_from == End.A else length - p
@@ -266,16 +273,23 @@ func _physics_process(_delta: float) -> void:
 		_origin_unloaded = true
 
 
-## Eintritt: nahe einem Ende = von dort kommend, Gegenseite vorladen (ausser Einbahnstrasse aus der
-## falschen Richtung). Wiedereintritt mitten im Durchgang (z. B. nach einem Schwung ueber die Waende)
-## mit nur einer geladenen Seite: man kommt von der leeren Seite und ist unterwegs zur geladenen.
-func _enter(p: float) -> void:
-	var side := End.A if p < length * 0.5 else End.B
-	var at_end := minf(p, length - p) <= length * RETURN_FRACTION
-	_origin_unloaded = not at_end and (area(End.A) == null) != (area(End.B) == null)
-	if _origin_unloaded:
-		side = End.A if area(End.A) == null else End.B
+func _capture() -> float:
+	return capture_radius if capture_radius > 0.0 else maxf(cross_section.x, cross_section.y) * 0.5 + WALL
+
+
+func _distance_to_path(world_pos: Vector3) -> float:
+	var local := to_local(world_pos)
+	return local.distance_to(curve.get_closest_point(local))
+
+
+func _near_end(p: float) -> bool:
+	return minf(p, length - p) <= length * RETURN_FRACTION
+
+
+## Eintritt von side: Gegenseite vorladen – ausser bei einer Einbahnstrasse aus der falschen Richtung.
+func _enter(side: int) -> void:
 	travel_from = side
+	_origin_unloaded = false
 	_pass_active = one_way_from == -1 or one_way_from == side
 	if _pass_active:
 		_request(_other(side))

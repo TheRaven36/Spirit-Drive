@@ -34,6 +34,8 @@
 
 [ext_resource type="Resource" path="res://data/world/hardcore_contrast_map.tres" id="19_hardcore"]
 
+[ext_resource type="Script" path="res://scripts/ui/minimap.gd" id="20_minimap"]
+
 [sub_resource type="ProceduralSkyMaterial" id="SkyMat"]
 sky_top_color = Color(0.32, 0.5, 0.78, 1)
 sky_horizon_color = Color(0.72, 0.78, 0.86, 1)
@@ -194,3 +196,40 @@ layer = 3
 script = ExtResource("13_dmgnum")
 guardian_path = NodePath("../Guardian")
 spirit_path = NodePath("../Guardian/SpiritEntity")
+
+[node name="Map" type="CanvasLayer" parent="."]
+layer = 2
+
+[node name="MiniMap" type="Control" parent="Map"]
+layout_mode = 3
+anchors_preset = 3
+anchor_left = 1.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -256.0
+offset_top = -256.0
+offset_right = -16.0
+offset_bottom = -16.0
+grow_horizontal = 0
+grow_vertical = 0
+script = ExtResource("20_minimap")
+world_map_path = NodePath("../../WorldMap")
+guardian_path = NodePath("../../Guardian")
+
+[node name="FullMap" type="Control" parent="Map"]
+visible = false
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 120.0
+offset_top = 60.0
+offset_right = -120.0
+offset_bottom = -60.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("20_minimap")
+world_map_path = NodePath("../../WorldMap")
+guardian_path = NodePath("../../Guardian")
+full_view = true

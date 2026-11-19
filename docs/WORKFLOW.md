@@ -44,6 +44,8 @@ godot --headless --path . --script res://tests/tunnel_test.gd
 godot --headless --path . --script res://tests/world_map_test.gd
 # Uebergaenge: beidseitig passierbar, Umkehr, Pass-Varianten, langer Weg (Exit-Code 0 = ok)
 godot --headless --path . --script res://tests/transition_test.gd
+# Minimap: Layout, Ausschnitt, Spieler-Punkt, Vollkarte (Exit-Code 0 = ok)
+godot --headless --path . --script res://tests/minimap_test.gd
 ```
 
 ## Lokal starten (Windows)

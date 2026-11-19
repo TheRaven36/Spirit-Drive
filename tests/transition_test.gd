@@ -283,7 +283,11 @@ func _test_long_trail() -> void:
 	await _put_at(trail, trail.length * 0.55)
 	await _frames(2)
 	_check(trail.area(A) == null and not is_instance_valid(x), "Herkunft ab 50 % entladen")
+	_place(g.global_position + Vector3.UP * (trail.capture_radius + 20.0))
+	await _frames(2)
+	_check(trail.travel_from == A, "Schwung aus dem Weg heraus (mitten drin): Durchgang laeuft weiter")
 	await _put_at(trail, trail.length * 0.75)
+	_check(trail.travel_from == A and trail.area(B) == y, "Wiedereintritt setzt den Weg fort, Ziel bleibt")
 	_check(not y.has_detail(), "bei 75 % noch keine Details")
 	await _put_at(trail, trail.length * 0.85)
 	var detail := y.get_node_or_null("Detail") as StaticBody3D

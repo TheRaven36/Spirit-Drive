@@ -69,11 +69,14 @@ func _physics_process(delta: float) -> void:
 			sector.build_detail()
 
 
-## Guardian ist nah genug an Seite end (oder gar nicht auf dem Weg -> volle Details).
+## Guardian ist nah genug an Seite end. Kurz herausgeschwungen zaehlt die letzte Position auf dem
+## Weg; ganz ausserhalb eines Durchgangs -> volle Details.
 func _in_detail_zone(end: int) -> bool:
 	if not is_instance_valid(_guardian):
 		return true
 	var p := progress_of(_guardian.global_position)
+	if p < 0.0 and travel_from != -1:
+		p = _last_progress
 	if p < 0.0:
 		return true
 	var to_end := p if end == End.A else length - p

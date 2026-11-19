@@ -10,6 +10,7 @@ id = &"hq"
 display_name = "Hauptquartier"
 region = 0
 scene_path = "res://scenes/areas/world/hq.tscn"
+map_position = Vector2(-1.4, 7.0)
 tags = PackedStringArray("start")
 camp = 1
 camp_start_state = 3
@@ -24,6 +25,7 @@ id = &"cathedral_cave"
 display_name = "Kathedralen-Hoehle"
 region = 0
 scene_path = "res://scenes/test_arena.tscn"
+map_position = Vector2(-4.6, 7.0)
 dead_end = true
 tags = PackedStringArray("arena")
 
@@ -33,6 +35,7 @@ id = &"stem_1"
 display_name = "Felsrampe"
 region = 1
 scene_path = "res://scenes/areas/world/stem_1.tscn"
+map_position = Vector2(-1.4, 5.8)
 
 [sub_resource type="Resource" id="S_stem_2"]
 script = ExtResource("2_sector")
@@ -40,6 +43,7 @@ id = &"stem_2"
 display_name = "Klammschlucht"
 region = 1
 scene_path = "res://scenes/areas/world/stem_2.tscn"
+map_position = Vector2(-1.4, 4.6)
 
 [sub_resource type="Resource" id="S_stem_niche"]
 script = ExtResource("2_sector")
@@ -47,6 +51,7 @@ id = &"stem_niche"
 display_name = "Moosnische"
 region = 1
 scene_path = "res://scenes/areas/world/stem_niche.tscn"
+map_position = Vector2(-3.6, 4.6)
 dead_end = true
 tags = PackedStringArray("sleep_spot", "resource_spot")
 
@@ -56,6 +61,7 @@ id = &"stem_3"
 display_name = "Hangwald"
 region = 1
 scene_path = "res://scenes/areas/world/stem_3.tscn"
+map_position = Vector2(-1.4, 3.4)
 
 [sub_resource type="Resource" id="S_stem_4"]
 script = ExtResource("2_sector")
@@ -63,6 +69,7 @@ id = &"stem_4"
 display_name = "Gipfeltor"
 region = 1
 scene_path = "res://scenes/areas/world/stem_4.tscn"
+map_position = Vector2(-1.6, 2.2)
 
 [sub_resource type="Resource" id="S_center_crossing"]
 script = ExtResource("2_sector")
@@ -70,6 +77,7 @@ id = &"center_crossing"
 display_name = "Kleeblatt-Kreuzung"
 region = 2
 scene_path = "res://scenes/areas/world/center_crossing.tscn"
+map_position = Vector2(0.0, 0.0)
 tags = PackedStringArray("hub")
 camp = 2
 camp_start_state = 0
@@ -86,6 +94,7 @@ id = &"center_north"
 display_name = "Nordterrasse"
 region = 2
 scene_path = "res://scenes/areas/world/center_north.tscn"
+map_position = Vector2(0.0, -2.0)
 
 [sub_resource type="Resource" id="S_center_south"]
 script = ExtResource("2_sector")
@@ -93,6 +102,7 @@ id = &"center_south"
 display_name = "Suedterrasse"
 region = 2
 scene_path = "res://scenes/areas/world/center_south.tscn"
+map_position = Vector2(2.0, 1.9)
 
 [sub_resource type="Resource" id="S_center_hollow"]
 script = ExtResource("2_sector")
@@ -100,6 +110,7 @@ id = &"center_hollow"
 display_name = "Tiefe Senke"
 region = 2
 scene_path = "res://scenes/areas/world/center_hollow.tscn"
+map_position = Vector2(1.6, -1.2)
 tags = PackedStringArray("drop_landing")
 
 [sub_resource type="Resource" id="S_nature_forest_edge"]
@@ -108,6 +119,7 @@ id = &"nature_forest_edge"
 display_name = "Waldrand"
 region = 3
 scene_path = "res://scenes/areas/world/nature_forest_edge.tscn"
+map_position = Vector2(-1.8, -0.6)
 
 [sub_resource type="Resource" id="S_nature_deep_forest"]
 script = ExtResource("2_sector")
@@ -115,6 +127,7 @@ id = &"nature_deep_forest"
 display_name = "Tiefer Wald"
 region = 3
 scene_path = "res://scenes/areas/world/nature_deep_forest.tscn"
+map_position = Vector2(-3.2, -1.4)
 tags = PackedStringArray("hidden_adds")
 
 [sub_resource type="Resource" id="S_nature_hidden_grove"]
@@ -123,6 +136,7 @@ id = &"nature_hidden_grove"
 display_name = "Verborgener Hain"
 region = 3
 scene_path = "res://scenes/areas/world/nature_hidden_grove.tscn"
+map_position = Vector2(-4.4, -0.6)
 dead_end = true
 tags = PackedStringArray("hidden_adds", "resource_spot")
 
@@ -132,6 +146,7 @@ id = &"nature_flatland"
 display_name = "Flachland"
 region = 3
 scene_path = "res://scenes/areas/world/nature_flatland.tscn"
+map_position = Vector2(-3.4, -3.0)
 tags = PackedStringArray("flying_grapple_minions")
 camp = 3
 camp_start_state = 0
@@ -149,6 +164,7 @@ id = &"nature_lake"
 display_name = "Seeufer"
 region = 3
 scene_path = "res://scenes/areas/world/nature_lake.tscn"
+map_position = Vector2(-1.8, -3.4)
 tags = PackedStringArray("lake")
 
 [sub_resource type="Resource" id="S_nature_reed_bay"]
@@ -157,6 +173,7 @@ id = &"nature_reed_bay"
 display_name = "Schilfbucht"
 region = 3
 scene_path = "res://scenes/areas/world/nature_reed_bay.tscn"
+map_position = Vector2(-2.4, -4.6)
 dead_end = true
 tags = PackedStringArray("sleep_spot")
 
@@ -166,6 +183,7 @@ id = &"swamp_marsh"
 display_name = "Sumpfrand"
 region = 4
 scene_path = "res://scenes/areas/world/swamp_marsh.tscn"
+map_position = Vector2(3.6, 2.5)
 
 [sub_resource type="Resource" id="S_swamp_ruins"]
 script = ExtResource("2_sector")
@@ -173,6 +191,7 @@ id = &"swamp_ruins"
 display_name = "Versunkene Ruinen"
 region = 4
 scene_path = "res://scenes/areas/world/swamp_ruins.tscn"
+map_position = Vector2(4.4, 1.0)
 tags = PackedStringArray("ruins")
 camp = 3
 camp_start_state = 0
@@ -190,6 +209,7 @@ id = &"swamp_crypt"
 display_name = "Ruinen-Krypta"
 region = 4
 scene_path = "res://scenes/areas/world/swamp_crypt.tscn"
+map_position = Vector2(5.6, 1.6)
 dead_end = true
 tags = PackedStringArray("resource_spot")
 
@@ -199,6 +219,7 @@ id = &"swamp_village"
 display_name = "Zerfallenes Dorf"
 region = 4
 scene_path = "res://scenes/areas/world/swamp_village.tscn"
+map_position = Vector2(3.0, 0.2)
 tags = PackedStringArray("village")
 
 [sub_resource type="Resource" id="S_mountain_foothills"]
@@ -207,6 +228,7 @@ id = &"mountain_foothills"
 display_name = "Vorgebirge"
 region = 5
 scene_path = "res://scenes/areas/world/mountain_foothills.tscn"
+map_position = Vector2(1.4, -3.4)
 
 [sub_resource type="Resource" id="S_mountain_cliffs"]
 script = ExtResource("2_sector")
@@ -214,6 +236,7 @@ id = &"mountain_cliffs"
 display_name = "Steilwand"
 region = 5
 scene_path = "res://scenes/areas/world/mountain_cliffs.tscn"
+map_position = Vector2(3.0, -3.6)
 camp = 3
 camp_start_state = 0
 camp_unlock_quest = &"deliver_ore"
@@ -230,6 +253,7 @@ id = &"mountain_eagle_nest"
 display_name = "Adlerhorst"
 region = 5
 scene_path = "res://scenes/areas/world/mountain_eagle_nest.tscn"
+map_position = Vector2(4.0, -4.6)
 dead_end = true
 tags = PackedStringArray("sleep_spot")
 
@@ -239,6 +263,7 @@ id = &"mountain_summit"
 display_name = "Gipfelgrat"
 region = 5
 scene_path = "res://scenes/areas/world/mountain_summit.tscn"
+map_position = Vector2(3.2, -2.0)
 tags = PackedStringArray("full_circle_drop")
 
 [sub_resource type="Resource" id="S_desert_rocks"]
@@ -247,6 +272,7 @@ id = &"desert_rocks"
 display_name = "Felswueste"
 region = 6
 scene_path = "res://scenes/areas/world/desert_rocks.tscn"
+map_position = Vector2(2.4, 3.0)
 tags = PackedStringArray("rock_desert")
 
 [sub_resource type="Resource" id="S_desert_sand"]
@@ -255,6 +281,7 @@ id = &"desert_sand"
 display_name = "Sandebene"
 region = 6
 scene_path = "res://scenes/areas/world/desert_sand.tscn"
+map_position = Vector2(1.4, 4.2)
 tags = PackedStringArray("sand")
 camp = 3
 camp_start_state = 0
@@ -272,6 +299,7 @@ id = &"desert_oasis"
 display_name = "Oase"
 region = 6
 scene_path = "res://scenes/areas/world/desert_oasis.tscn"
+map_position = Vector2(2.6, 5.0)
 dead_end = true
 tags = PackedStringArray("sleep_spot", "resource_spot")
 
@@ -281,6 +309,7 @@ id = &"desert_dunes"
 display_name = "Duenenmeer"
 region = 6
 scene_path = "res://scenes/areas/world/desert_dunes.tscn"
+map_position = Vector2(0.2, 3.6)
 tags = PackedStringArray("dunes")
 
 [sub_resource type="Resource" id="S_desert_monoliths"]
@@ -289,6 +318,7 @@ id = &"desert_monoliths"
 display_name = "Monolithenfeld"
 region = 6
 scene_path = "res://scenes/areas/world/desert_monoliths.tscn"
+map_position = Vector2(0.3, 1.5)
 tags = PackedStringArray("monolith_anchors")
 
 [sub_resource type="Resource" id="L_0"]
