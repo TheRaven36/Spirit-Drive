@@ -1,0 +1,19 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/world/rock_pass_transition.gd" id="1_pass"]
+
+[node name="RockPass_steep" type="Node3D"]
+script = ExtResource("1_pass")
+cross_section = Vector2(12, 20)
+door_size = Vector2(12, 20)
+capture_radius = 24.0
+points = PackedVector3Array(0, 0, 0, 0, 0, 10, 6, 8, 40, -6, 18, 70, 4, 26, 100, 0, 30, 125, 0, 30, 135)
+arch_spacing = 22.0
+arch_height = 0.5
+overhangs = true
+
+[node name="EntryAnchor" type="Marker3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -10.0, 0)
+
+[node name="ExitAnchor" type="Marker3D" parent="."]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 0, 20.0, 135)

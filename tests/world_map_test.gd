@@ -192,7 +192,7 @@ func _incoming(id: StringName) -> Array[StringName]:
 func _test_gate_blocks() -> void:
 	print("Blockierte Uebergaenge")
 	var cases := [
-		[BLOCK.ROCK_BLOCK, "res://scenes/transitions/rock_pass_transition.tscn"],
+		[BLOCK.ROCK_BLOCK, "res://scenes/transitions/rock_pass_canyon.tscn"],
 		[BLOCK.BURNABLE_GROWTH, "res://scenes/organic_transition_tunnel.tscn"],
 		[BLOCK.CLASH_TREE, "res://scenes/transitions/sloped_cave_shortcut.tscn"],
 	]

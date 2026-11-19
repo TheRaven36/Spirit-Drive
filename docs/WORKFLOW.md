@@ -42,6 +42,8 @@ godot --headless --path . --script res://tests/homebase_test.gd
 godot --headless --path . --script res://tests/tunnel_test.gd
 # Kleeblatt-Welt: Graph, Sperren, Lager, Schnellreise, Streaming-Kette (Exit-Code 0 = ok)
 godot --headless --path . --script res://tests/world_map_test.gd
+# Uebergaenge: beidseitig passierbar, Umkehr, Pass-Varianten, langer Weg (Exit-Code 0 = ok)
+godot --headless --path . --script res://tests/transition_test.gd
 ```
 
 ## Lokal starten (Windows)
@@ -56,7 +58,7 @@ godot --headless --path . --script res://tests/world_map_test.gd
 ```
 scenes/          Szenen (.tscn); scenes/areas/ = streamfähige Areale
 scenes/areas/world/  Whitebox-Sektoren der Kleeblatt-Welt
-scenes/transitions/  Felspass + abfallende Hoehlen-Abkuerzung
+scenes/transitions/  Felspass-Varianten, abfallende Hoehlen-Abkuerzung, langer Weg
 scenes/ui/       HUD-Szenen (minimal_hud.tscn)
 scripts/         GDScript-Logik (Guardian, Injects, Mobs …)
 scripts/spirits/ Spirit-Daten, Roster-Komponente, Feld-Avatar

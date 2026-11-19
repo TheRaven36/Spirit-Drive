@@ -18,8 +18,14 @@ signal fast_travel_finished(id: StringName)
 
 const TRANSITION_SCENES := {
 	SectorLink.TransitionType.ORGANIC_TUNNEL: "res://scenes/organic_transition_tunnel.tscn",
-	SectorLink.TransitionType.ROCK_PASS: "res://scenes/transitions/rock_pass_transition.tscn",
 	SectorLink.TransitionType.SLOPED_SHORTCUT: "res://scenes/transitions/sloped_cave_shortcut.tscn",
+	SectorLink.TransitionType.LONG_TRAIL: "res://scenes/transitions/long_trail_transition.tscn",
+}
+const ROCK_PASS_SCENES := {
+	SectorLink.PassVariant.CANYON: "res://scenes/transitions/rock_pass_canyon.tscn",
+	SectorLink.PassVariant.GORGE: "res://scenes/transitions/rock_pass_gorge.tscn",
+	SectorLink.PassVariant.SERPENTINE: "res://scenes/transitions/rock_pass_serpentine.tscn",
+	SectorLink.PassVariant.STEEP: "res://scenes/transitions/rock_pass_steep.tscn",
 }
 const CAMP := WorldSectorData.CampUnlockState
 ## Hoehe ueber dem Spawn-Marker bei der Schnellreise-Ankunft (Kapsel-Mitte).
@@ -113,13 +119,21 @@ func _gate_alive(g: SeamlessLoadingGate) -> bool:
 
 ## Uebergang am Exit-Marker "Exits/<Nachbar>" des geladenen Sektors from_id einsetzen (Seite A = from_id).
 func _spawn_gate(link: SectorLink, from_id: StringName) -> void:
-	var from_node := sector_node(from_id)
+	var gate := make_gate(link, from_id, sector_node(from_id))
+	if gate == null:
+		return
+	_areas.add_child(gate)
+	_register_gate(gate, link)
+
+
+## Konfiguriertes, am Exit-Marker von from_node ausgerichtetes Gate (noch nicht im Baum).
+func make_gate(link: SectorLink, from_id: StringName, from_node: Node3D) -> SeamlessLoadingGate:
 	var to_id := link.other(from_id)
 	var marker := from_node.get_node_or_null("Exits/" + str(to_id)) as Node3D
 	if marker == null:
 		push_warning("WorldMap: Sektor %s hat keinen Exit-Marker zu %s" % [from_id, to_id])
-		return
-	var gate := (load(TRANSITION_SCENES[link.transition]) as PackedScene).instantiate() as SeamlessLoadingGate
+		return null
+	var gate := (load(scene_for(link)) as PackedScene).instantiate() as SeamlessLoadingGate
 	gate.name = "Gate_%s_%s" % [from_id, to_id]
 	gate.sector_a = from_id
 	gate.sector_b = to_id
@@ -134,8 +148,13 @@ func _spawn_gate(link: SectorLink, from_id: StringName) -> void:
 	var anchor := gate.get_node("EntryAnchor") as Node3D
 	gate.transform = _areas.global_transform.affine_inverse() * marker.global_transform \
 			* anchor.transform.affine_inverse()
-	_areas.add_child(gate)
-	_register_gate(gate, link)
+	return gate
+
+
+func scene_for(link: SectorLink) -> String:
+	if link.transition == SectorLink.TransitionType.ROCK_PASS:
+		return ROCK_PASS_SCENES[link.pass_variant]
+	return TRANSITION_SCENES[link.transition]
 
 
 # --- Sperren -----------------------------------------------------------------
@@ -201,11 +220,20 @@ func is_camp_built(id: StringName) -> bool:
 ## Camp-Prefab im geladenen Sektor erst ab TIER_1 sichtbar/aktiv (inkl. SafeZone und Collision).
 func _apply_camp(id: StringName) -> void:
 	var node := sector_node(id)
-	if node == null or node.get_node_or_null("Camp") == null:
+	if node != null:
+		apply_camp_state(node, is_camp_built(id))
+
+
+func apply_camp_state(sector: Node3D, built: bool) -> void:
+	var camp := sector.get_node_or_null("Camp") as Node3D
+	if camp == null:
 		return
-	var camp := node.get_node("Camp") as Node3D
-	camp.visible = is_camp_built(id)
-	camp.process_mode = Node.PROCESS_MODE_INHERIT if camp.visible else Node.PROCESS_MODE_DISABLED
+	camp.visible = built
+	camp.process_mode = Node.PROCESS_MODE_INHERIT if built else Node.PROCESS_MODE_DISABLED
+	# process_mode/visible schalten CSG-Collision nicht ab -> sonst unsichtbare Waende (Einbahn-Gefuehl).
+	for csg: CSGShape3D in camp.find_children("*", "CSGShape3D", true, false):
+		if csg.is_root_shape():
+			csg.use_collision = built
 
 
 # --- Schnellreise ------------------------------------------------------------

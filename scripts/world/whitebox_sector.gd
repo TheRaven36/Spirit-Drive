@@ -8,6 +8,11 @@ extends Node3D
 ##   Exits/<Nachbar-ID>  Marker3D am Rand, Boden-Hoehe, +Z zeigt aus dem Sektor in den Uebergang.
 ##   Spawn               Ankunftspunkt (Schnellreise).
 ##   Camp                optional: HomebaseOutpost-Instanz; sichtbar/aktiv erst ab CampUnlockState.TIER_1.
+##
+## Zwei Stufen: "Geometry" = Grob-Stufe (Boden, Waende, die landmark_count hoechsten Saeulen – von weitem
+##   lesbar), "Detail" = uebrige Saeulen/Anker-Cluster. Normal wird beides in _ready gebaut; ein langer
+##   Weg (LongTrailTransition) setzt build_detail_on_ready = false und ruft build_detail() erst in der
+##   Naeherungszone – vorher existiert die Detail-Geometrie gar nicht (kein Speicher, keine Collision).
 
 const WALL_HEIGHT := 8.0
 const WALL_THICKNESS := 2.0
@@ -29,14 +34,38 @@ const GRID_SHADER := preload("res://assets/shaders/proto_grid.gdshader")
 @export var pillar_height := Vector2(14, 40)
 @export var pillar_width := 4.0
 @export var layout_seed := 1
+## So viele der hoechsten Saeulen gehoeren zur Grob-Stufe (Landmarken).
+@export var landmark_count := 2
+
+var build_detail_on_ready := true
+var _detail_boxes: Array[Dictionary] = []
+var _detail_built := false
 
 
 func _ready() -> void:
 	var boxes: Array[Dictionary] = [_box(Vector3(0, -0.5, 0),
 			Vector3(size.x + 2 * WALL_THICKNESS, 1, size.y + 2 * WALL_THICKNESS), Color.WHITE)]
 	boxes.append_array(_wall_boxes())
-	boxes.append_array(_pillar_boxes())
+	var pillars := _pillar_boxes()
+	pillars.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return a.size.y > b.size.y)
+	boxes.append_array(pillars.slice(0, landmark_count))
+	_detail_boxes = pillars.slice(landmark_count)
 	add_box_cluster(self, "Geometry", boxes, theme_color)
+	if build_detail_on_ready:
+		build_detail()
+
+
+## Detail-Stufe bauen (einmalig).
+func build_detail() -> void:
+	if _detail_built:
+		return
+	_detail_built = true
+	if not _detail_boxes.is_empty():
+		add_box_cluster(self, "Detail", _detail_boxes, theme_color)
+
+
+func has_detail() -> bool:
+	return _detail_built
 
 
 ## Box-Beschreibung fuer add_box_cluster (xf ohne Skalierung).

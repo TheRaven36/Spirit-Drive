@@ -16,7 +16,8 @@ scenes/ui/minimal_hud.tscn  Minimal-HUD (HP, Haken, Spirit-Slots, Steuerungs-Ove
 scenes/ui/damage_number.tscn  Eine Floating Damage Number (Label + Pop-Tween)
 scenes/areas/               Streamfaehige Areale (keine Megaszene)
 scenes/areas/world/         Whitebox-Sektoren der Kleeblatt-Welt (hq.tscn = HQ mit Homebase-Prefab als Camp)
-scenes/transitions/         rock_pass_transition.tscn, sloped_cave_shortcut.tscn
+scenes/transitions/         rock_pass_{canyon,gorge,serpentine,steep}.tscn (Pass-Varianten),
+                            sloped_cave_shortcut.tscn, long_trail_transition.tscn
 scripts/
   guardian_controller.gd    Spieler: Movement, Wall-Run, Seilphysik, Kamera
   guardian_input.gd         Input-Actions zur Laufzeit (Tastatur/Maus + Xbox)
@@ -29,7 +30,9 @@ scripts/
   guardian_progress.gd      Besitz/Fortschritt (Material, Rucksack, Truhe, Ausruestung, Upgrades)
   organic_transition_tunnel.gd  Tunnel: CSG-Roehre + Felsvorspruenge (extends SeamlessLoadingGate)
   world/                    SeamlessLoadingGate (async Laden/Entladen, Exit-Marker, Sperren, Einbahn),
-                            RockPassTransition, SlopedCaveShortcut, WhiteboxSector,
+                            RockPassTransition (Varianten per Szene), SlopedCaveShortcut,
+                            LongTrailTransition (Ziel grob frueh, Details in der Naeherungszone),
+                            WhiteboxSector (Grob-Stufe "Geometry" + Detail-Stufe "Detail"),
                             WorldMapData/WorldSectorData/SectorLink (Graph-Daten),
                             WorldMapManager (Uebergaenge setzen/freigeben, Sperren, Lager, Schnellreise)
   homebase/                 HomebaseOutpost, InteractionStation (F/ESC) + StationWindow,
@@ -52,6 +55,7 @@ tests/spirit_entity_test.gd   Feld-Spirit-KI: Follow, Bodyguard, Hard-Lock-Befeh
 tests/homebase_test.gd        Homebase: Stationen, Interaktion, Altar-Kombinationen, SafeZone
 tests/tunnel_test.gd          Tunnel: Geometrie, asynchrones Laden/Entladen in beide Richtungen
 tests/world_map_test.gd       Kleeblatt-Graph, Sperren, Lager/Schnellreise, Streaming-Kette
+tests/transition_test.gd      Alle Verbindungen beidseitig passierbar, Umkehr, Pass-Varianten, langer Weg
 tools/, start_game.bat      Windows-Start + UID-Konflikt-Fix
 docs/WORKFLOW.md, docs/PATCHNOTES.md
 ```
@@ -80,6 +84,6 @@ docs/WORKFLOW.md, docs/PATCHNOTES.md
 1. `godot --headless --path . --import` und erzeugte `.uid`-Dateien mitcommitten.
 2. Alle Suites in `tests/` muessen Exit-Code 0 liefern:
    `godot --headless --path . --script res://tests/<suite>.gd` fuer movement_smoke_test,
-   spirit_system_test, spirit_entity_test, homebase_test, tunnel_test, world_map_test.
+   spirit_system_test, spirit_entity_test, homebase_test, tunnel_test, world_map_test, transition_test.
 3. Eintrag in `docs/PATCHNOTES.md` (neueste oben).
 4. Nur auf `Robin-Branch` committen und pushen; `main` nur nach Robins Freigabe.

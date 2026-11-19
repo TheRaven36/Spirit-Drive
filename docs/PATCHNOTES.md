@@ -4,6 +4,41 @@ Neueste Einträge immer oben.
 
 ## Unreleased
 
+### 2026-11-19 – Phase 3G: Einbahn-Blockaden behoben, Felspass-Varianten, lange Wege
+**Unsichtbare Einbahn-Blockaden (3 Ursachen)**
+- **Ungebaute Lager:** Das ausgeblendete Camp-Prefab (Zentrumslager + 4 Vorposten) behielt seine CSG-Wände –
+  `visible`/`process_mode` schalten CSG-Collision nicht ab. Von −Z kam man durchs unsichtbare Tor hinein und
+  prallte an der Rückwand ab, von den anderen Seiten schon außen. Jetzt wird `use_collision` der CSG-Wurzeln
+  mitgeschaltet (`WorldMapManager.apply_camp_state`).
+- **Tunnel-Tor B:** Die gebackenen Up-Vektoren der `Curve3D` drehten sich in der S-Kurve auf; am Tor B war der
+  Rahmen ~60° gerollt. Röhre und Barriere standen schief, der Röhrenboden lag ~2 m unter der Torschwelle →
+  hinein ging, heraus nicht. Kurven jetzt ohne Up-Vektoren (Rahmen bleibt aufrecht), CSG mit
+  `PATH_ROTATION_PATH`. Außerdem gerade Endstücke an beiden Toren (vorher tauchte die Kurve dort ~0,9 m
+  unter den Sektor-Boden → Stufe an der Schwelle).
+- **Umkehren im Übergang:** Wer nach der Biegung umdrehte, stand vor der geschlossenen Barriere der schon
+  entladenen Herkunft. Jetzt wird die Herkunft neu geladen (`RETURN_FRACTION` 20 %), die Gegenseite wird
+  zur neuen Herkunft und entladen. Wiedereintritt mitten im Durchgang (z. B. nach einem Schwung über die
+  Wände) erkennt die Richtung an der geladenen Seite; offene Übergänge haben einen größeren Fangradius.
+
+**Felspass-Varianten** (Szenen `scenes/transitions/rock_pass_*.tscn`, Auswahl über `SectorLink.pass_variant`)
+- Canyon 20 m breit / 14 m Wand / flach geschwungen / Bögen alle 45 m hoch oben.
+- Klamm 9 m / 28 m / fast gerade / einseitige Überhänge alle 16 m tief unten.
+- Serpentine 13 m / 18 m / vier Kehren ±20 m / Bögen alle 30 m knapp unter der Kante.
+- Steiler Aufstieg 12 m / 20 m / +30 m Höhe / Überhänge alle 22 m auf halber Höhe.
+- Über die Karte verteilt (Canyon 5×, die anderen je 4×), 4 Regionen mischen mehrere Varianten.
+
+**Langer Weg (`LongTrailTransition`, Typ `LONG_TRAIL`)**
+- ~370 m offener Weg mit Randsteinen und Steinmännchen als Anker. Beim Betreten dockt das Ziel sofort an,
+  aber nur als Grob-Stufe (`WhiteboxSector`: Boden, Wände, höchste Landmarken) – von weitem sichtbar.
+  In den letzten 20 % wird die Detail-Stufe gebaut (vorher existiert sie nicht: kein Speicher, keine
+  Collision). Die Herkunft wird erst nach 50 % entladen.
+- 4 lange Wege: Flachland → See, Ruinen ↔ Dorf, Nordterrasse → Vorgebirge, Südterrasse → Felswüste.
+
+**Tests**
+- Neu `tests/transition_test.gd`: alle 35 Spieler-Verbindungen per Kapsel-Sweep hin und zurück (beide Seiten
+  geladen), Umkehr je Verbindung, ungebaute Lager ohne Wände, Varianten-Kennwerte + Zuweisung, langer Weg
+  (Grob → Detail, Entlade-Zeitpunkt, Sichtlinie zur Landmarke, keine verwaisten Nodes).
+
 ### 2026-11-19 – Phase 3E: Kleeblatt-Weltgerüst, blockierte Übergänge, ausbaubare Lager
 **Welt-Graph (datengetrieben, `data/world/kleeblatt_world.tres`)**
 - `WorldMapData` (Sektoren + Links, Breitensuche `find_path`, `neighbors`), `WorldSectorData` (Region, Szene,

@@ -7,7 +7,7 @@ extends Node3D
 ## Ablauf (Fortschritt = naechster Kurven-Offset des Guardians):
 ##   1. Guardian betritt den Durchgang an Seite X -> Ziel-Szene der anderen Seite wird per
 ##      ResourceLoader.load_threaded_request im Hintergrund geladen.
-##   2. Ab BEND_FRACTION der Laenge (ausser Sicht) wird das Areal an Seite X entladen (queue_free),
+##   2. Ab unload_fraction der Laenge (Standard BEND_FRACTION, ausser Sicht) wird das Areal an Seite X entladen (queue_free),
 ##      Barriere X schliesst (dahinter ist nichts mehr).
 ##   3. Sobald THREAD_LOAD_LOADED: Szene an der Zielseite andocken, Barriere oeffnet.
 ##   Rueckweg symmetrisch. Immer nur das aktive Areal bleibt im Speicher.
@@ -18,6 +18,7 @@ extends Node3D
 ## Sperre (block_type != NONE): Ein Hindernis fuellt die Mitte des Durchgangs, das Gate laedt nichts.
 ##   unlock_gate() raeumt es weg (Fels/Gestruepp verschwinden, der Clash-Baum stuerzt um).
 ## Einbahnstrasse (one_way_from): nur wer von dieser Seite kommt, loest Laden/Entladen aus.
+## Umkehr: Wer nach dem Entladen der Herkunft umdreht, bekommt sie neu geladen (_turn_back).
 
 signal area_loaded(end: int, area: Node3D)
 signal area_unloaded(end: int)
@@ -27,6 +28,9 @@ enum End { A, B }
 
 ## Areal wird entladen, sobald der Guardian diesen Anteil der Laenge von seiner Seite zurueckgelegt hat.
 const BEND_FRACTION := 0.35
+## Kehrt der Guardian nach dem Entladen bis auf diesen Anteil zur Herkunft zurueck, wird sie neu geladen
+## (kleiner als BEND_FRACTION -> kein Hin-und-her-Laden an der Schwelle).
+const RETURN_FRACTION := 0.2
 ## Erst so tief im Durchgang zaehlt der Guardian als "drin" (m ab Ende).
 const ENTER_MARGIN := 3.0
 const WALL := 1.0
@@ -54,6 +58,11 @@ const TREE_FALL_TIME := 1.2
 ## Energie-Barriere an den Enden (Breite, Hoehe ab Boden).
 @export var door_size := Vector2(10, 10)
 @export var block_type := SectorLink.GateBlockType.NONE
+## Herkunft wird entladen, sobald der Guardian diesen Anteil der Laenge zurueckgelegt hat.
+@export var unload_fraction := BEND_FRACTION
+## Abstand zur Mittellinie, bis zu dem der Guardian als "drin" zaehlt (0 = aus cross_section).
+## Offene Uebergaenge brauchen mehr, sonst faellt man beim Schwingen ueber den Waenden "heraus".
+@export var capture_radius := 0.0
 ## -1 = beide Richtungen, sonst nur von dieser Seite (End.A / End.B).
 @export var one_way_from := -1
 
@@ -61,6 +70,9 @@ var curve: Curve3D
 var length := 0.0
 ## Seite, von der der Guardian gerade durch den Durchgang reist (-1 = nicht drin).
 var travel_from := -1
+## Dieser Durchgang laedt/entlaedt (false = Einbahnstrasse aus der falschen Richtung betreten).
+var _pass_active := false
+var _origin_unloaded := false
 
 var _areas: Array[Node3D] = [null, null]
 var _loading: Array[bool] = [false, false]
@@ -95,15 +107,32 @@ func _build_geometry() -> void:
 
 
 ## Glatte Kurve durch pts (Bezier-Griffe nach Catmull-Rom). ext verlaengert beide Enden.
+## Ohne Up-Vektoren: Die gebackenen Up-Vektoren drehen sich in der S-Kurve auf (Tor B war ~60 Grad
+## gerollt -> Roehrenboden 2 m unter der Torschwelle = von innen nicht passierbar). Ohne sie bleibt
+## der Rahmen aufrecht (Welt-Y).
+## Erstes/letztes Segment gerade (Tangente auf die Endrichtung projiziert): sonst taucht die Kurve
+## hinter dem Tor unter den Sektor-Boden (Stufe an der Torschwelle).
 static func make_curve(points: Array, ext: float) -> Curve3D:
 	var pts := points.duplicate()
 	pts[0] = (pts[0] as Vector3) - Vector3(0, 0, ext)
 	pts[-1] = (pts[-1] as Vector3) + Vector3(0, 0, ext)
+	var n := pts.size()
 	var c := Curve3D.new()
-	for i in pts.size():
-		var t: Vector3 = (pts[mini(i + 1, pts.size() - 1)] - pts[maxi(i - 1, 0)]) / 6.0
+	c.up_vector_enabled = false
+	for i in n:
+		var t: Vector3 = (pts[mini(i + 1, n - 1)] - pts[maxi(i - 1, 0)]) / 6.0
+		if n > 3 and i == 1:
+			t = _end_handle(t, pts[1] - pts[0])
+		elif n > 3 and i == n - 2:
+			t = _end_handle(t, pts[n - 1] - pts[n - 2])
 		c.add_point(pts[i], -t, t)
 	return c
+
+
+## Griff am Endstueck: entlang der Endrichtung, hoechstens 3/4 des Endstuecks (sonst laeuft die
+## Kurve bei langen Folgesegmenten ueber den Startpunkt zurueck).
+static func _end_handle(t: Vector3, end_segment: Vector3) -> Vector3:
+	return t.project(end_segment).limit_length(end_segment.length() * 0.75)
 
 
 # --- Barrieren ---------------------------------------------------------------
@@ -212,7 +241,8 @@ func sector_at(end: int) -> StringName:
 func progress_of(world_pos: Vector3) -> float:
 	var local := to_local(world_pos)
 	var off := curve.get_closest_offset(local)
-	var inside := local.distance_to(curve.sample_baked(off)) <= maxf(cross_section.x, cross_section.y) * 0.5 + WALL \
+	var radius := capture_radius if capture_radius > 0.0 else maxf(cross_section.x, cross_section.y) * 0.5 + WALL
+	var inside := local.distance_to(curve.sample_baked(off)) <= radius \
 			and off > ENTER_MARGIN and off < length - ENTER_MARGIN
 	return off if inside else -1.0
 
@@ -225,18 +255,38 @@ func _physics_process(_delta: float) -> void:
 		travel_from = -1
 		return
 	if travel_from == -1:
-		travel_from = End.A if p < length * 0.5 else End.B
-		if _may_travel():
-			_request(_other(travel_from))
-	if not _may_travel():
+		_enter(p)
+	if not _pass_active:
 		return
 	var travelled := p if travel_from == End.A else length - p
-	if travelled >= length * BEND_FRACTION and area(travel_from) != null:
+	if _origin_unloaded and travelled < length * RETURN_FRACTION:
+		_turn_back()
+	elif travelled >= length * unload_fraction and area(travel_from) != null:
 		_unload(travel_from)
+		_origin_unloaded = true
 
 
-func _may_travel() -> bool:
-	return one_way_from == -1 or one_way_from == travel_from
+## Eintritt: nahe einem Ende = von dort kommend, Gegenseite vorladen (ausser Einbahnstrasse aus der
+## falschen Richtung). Wiedereintritt mitten im Durchgang (z. B. nach einem Schwung ueber die Waende)
+## mit nur einer geladenen Seite: man kommt von der leeren Seite und ist unterwegs zur geladenen.
+func _enter(p: float) -> void:
+	var side := End.A if p < length * 0.5 else End.B
+	var at_end := minf(p, length - p) <= length * RETURN_FRACTION
+	_origin_unloaded = not at_end and (area(End.A) == null) != (area(End.B) == null)
+	if _origin_unloaded:
+		side = End.A if area(End.A) == null else End.B
+	travel_from = side
+	_pass_active = one_way_from == -1 or one_way_from == side
+	if _pass_active:
+		_request(_other(side))
+
+
+## Umkehr nach dem Entladen der Herkunft: Herkunft neu laden, die Gegenseite wird zur neuen Herkunft
+## (und nach BEND_FRACTION entladen). Sonst stuende man vor der geschlossenen Barriere.
+func _turn_back() -> void:
+	_request(travel_from)
+	travel_from = _other(travel_from)
+	_origin_unloaded = false
 
 
 func _process(_delta: float) -> void:
@@ -262,6 +312,7 @@ func _poll(end: int) -> void:
 		return
 	var packed := ResourceLoader.load_threaded_get(_scene(end)) as PackedScene
 	var node := packed.instantiate() as Node3D
+	_prepare_area(node, end)
 	# Lage vor add_child setzen -> Physik-Bodies entstehen direkt am Anker.
 	node.transform = (get_parent() as Node3D).global_transform.affine_inverse() \
 			* _anchors[end].global_transform * _dock_offset(node, end)
@@ -269,6 +320,11 @@ func _poll(end: int) -> void:
 	_areas[end] = node
 	set_barrier_open(end, true)
 	area_loaded.emit(end, node)
+
+
+## Vor dem Andocken (vor _ready des Areals) – z. B. LongTrailTransition: erst nur Grob-Stufe bauen.
+func _prepare_area(_node: Node3D, _end: int) -> void:
+	pass
 
 
 ## Marker "Exits/<Gegenseite>" des Areals auf den Anker legen (siehe Doc oben).

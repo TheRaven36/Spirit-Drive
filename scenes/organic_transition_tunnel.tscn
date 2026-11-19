@@ -26,7 +26,7 @@ polygon = PackedVector2Array(13.0, 0.0, 12.7502, 1.9509, 12.0104, 3.8268, 10.809
 mode = 2
 path_node = NodePath("../../PathOuter")
 path_interval = 2.0
-path_rotation = 2
+path_rotation = 1
 path_local = true
 material = SubResource("RockMat")
 
@@ -36,7 +36,7 @@ polygon = PackedVector2Array(12.0, 0.0, 11.7694, 1.7558, 11.0866, 3.4442, 9.9776
 mode = 2
 path_node = NodePath("../../PathInner")
 path_interval = 2.0
-path_rotation = 2
+path_rotation = 1
 path_local = true
 material = SubResource("RockMat")
 

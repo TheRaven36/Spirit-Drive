@@ -314,12 +314,14 @@ script = ExtResource("3_link")
 from_sector = &"stem_2"
 to_sector = &"stem_3"
 transition = 1
+pass_variant = 3
 
 [sub_resource type="Resource" id="L_4"]
 script = ExtResource("3_link")
 from_sector = &"stem_2"
 to_sector = &"stem_niche"
 transition = 1
+pass_variant = 1
 
 [sub_resource type="Resource" id="L_5"]
 script = ExtResource("3_link")
@@ -332,6 +334,7 @@ script = ExtResource("3_link")
 from_sector = &"stem_4"
 to_sector = &"center_crossing"
 transition = 1
+pass_variant = 3
 
 [sub_resource type="Resource" id="L_7"]
 script = ExtResource("3_link")
@@ -351,6 +354,7 @@ script = ExtResource("3_link")
 from_sector = &"center_crossing"
 to_sector = &"center_south"
 transition = 1
+pass_variant = 2
 
 [sub_resource type="Resource" id="L_10"]
 script = ExtResource("3_link")
@@ -364,12 +368,14 @@ script = ExtResource("3_link")
 from_sector = &"center_hollow"
 to_sector = &"center_south"
 transition = 1
+pass_variant = 1
 
 [sub_resource type="Resource" id="L_12"]
 script = ExtResource("3_link")
 from_sector = &"center_crossing"
 to_sector = &"nature_forest_edge"
 transition = 1
+pass_variant = 2
 
 [sub_resource type="Resource" id="L_13"]
 script = ExtResource("3_link")
@@ -382,6 +388,7 @@ script = ExtResource("3_link")
 from_sector = &"nature_deep_forest"
 to_sector = &"nature_hidden_grove"
 transition = 1
+pass_variant = 1
 block = 2
 
 [sub_resource type="Resource" id="L_15"]
@@ -389,12 +396,13 @@ script = ExtResource("3_link")
 from_sector = &"nature_deep_forest"
 to_sector = &"nature_flatland"
 transition = 1
+pass_variant = 2
 
 [sub_resource type="Resource" id="L_16"]
 script = ExtResource("3_link")
 from_sector = &"nature_flatland"
 to_sector = &"nature_lake"
-transition = 1
+transition = 3
 
 [sub_resource type="Resource" id="L_17"]
 script = ExtResource("3_link")
@@ -413,6 +421,7 @@ script = ExtResource("3_link")
 from_sector = &"nature_deep_forest"
 to_sector = &"nature_lake"
 transition = 1
+pass_variant = 2
 monster_only = true
 
 [sub_resource type="Resource" id="L_20"]
@@ -420,6 +429,7 @@ script = ExtResource("3_link")
 from_sector = &"center_south"
 to_sector = &"swamp_marsh"
 transition = 1
+pass_variant = 2
 
 [sub_resource type="Resource" id="L_21"]
 script = ExtResource("3_link")
@@ -438,7 +448,7 @@ block = 1
 script = ExtResource("3_link")
 from_sector = &"swamp_ruins"
 to_sector = &"swamp_village"
-transition = 1
+transition = 3
 
 [sub_resource type="Resource" id="L_24"]
 script = ExtResource("3_link")
@@ -457,7 +467,7 @@ monster_only = true
 script = ExtResource("3_link")
 from_sector = &"center_north"
 to_sector = &"mountain_foothills"
-transition = 1
+transition = 3
 
 [sub_resource type="Resource" id="L_27"]
 script = ExtResource("3_link")
@@ -470,6 +480,7 @@ script = ExtResource("3_link")
 from_sector = &"mountain_cliffs"
 to_sector = &"mountain_eagle_nest"
 transition = 1
+pass_variant = 3
 block = 3
 
 [sub_resource type="Resource" id="L_29"]
@@ -477,6 +488,7 @@ script = ExtResource("3_link")
 from_sector = &"mountain_cliffs"
 to_sector = &"mountain_summit"
 transition = 1
+pass_variant = 3
 
 [sub_resource type="Resource" id="L_30"]
 script = ExtResource("3_link")
@@ -490,13 +502,14 @@ script = ExtResource("3_link")
 from_sector = &"mountain_summit"
 to_sector = &"mountain_foothills"
 transition = 1
+pass_variant = 1
 monster_only = true
 
 [sub_resource type="Resource" id="L_32"]
 script = ExtResource("3_link")
 from_sector = &"center_south"
 to_sector = &"desert_rocks"
-transition = 1
+transition = 3
 
 [sub_resource type="Resource" id="L_33"]
 script = ExtResource("3_link")
@@ -521,6 +534,7 @@ script = ExtResource("3_link")
 from_sector = &"desert_dunes"
 to_sector = &"desert_monoliths"
 transition = 1
+pass_variant = 1
 
 [sub_resource type="Resource" id="L_37"]
 script = ExtResource("3_link")

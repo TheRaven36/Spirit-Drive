@@ -40,7 +40,7 @@ func _add_ring(tube: CSGCombiner3D, ring_name: String, radius: Vector2, c: Curve
 	poly.name = ring_name
 	poly.operation = op
 	poly.mode = CSGPolygon3D.MODE_PATH
-	poly.path_rotation = CSGPolygon3D.PATH_ROTATION_PATH_FOLLOW
+	poly.path_rotation = CSGPolygon3D.PATH_ROTATION_PATH
 	poly.path_local = true
 	poly.path_interval = PATH_INTERVAL
 	poly.material = mat
