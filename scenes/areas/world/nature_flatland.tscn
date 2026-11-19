@@ -1,0 +1,27 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/world/whitebox_sector.gd" id="1_sector"]
+[ext_resource type="PackedScene" path="res://scenes/homebase_outpost.tscn" id="2_camp"]
+
+[node name="NatureFlatland" type="Node3D"]
+script = ExtResource("1_sector")
+size = Vector2(160, 160)
+theme_color = Color(0.32, 0.48, 0.3, 1)
+pillar_count = 5
+pillar_height = Vector2(20, 35)
+pillar_width = 3.0
+layout_seed = 12592
+
+[node name="Exits" type="Node3D" parent="."]
+
+[node name="nature_deep_forest" type="Marker3D" parent="Exits"]
+position = Vector3(0.0, 0, -80.0)
+rotation = Vector3(0, 3.1415927, 0)
+
+[node name="nature_lake" type="Marker3D" parent="Exits"]
+position = Vector3(0.0, 0, 80.0)
+
+[node name="Spawn" type="Marker3D" parent="."]
+position = Vector3(0, 0, -6.0)
+
+[node name="Camp" parent="." instance=ExtResource("2_camp")]

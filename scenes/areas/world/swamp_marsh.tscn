@@ -1,0 +1,24 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/world/whitebox_sector.gd" id="1_sector"]
+
+[node name="SwampMarsh" type="Node3D"]
+script = ExtResource("1_sector")
+size = Vector2(160, 160)
+theme_color = Color(0.34, 0.38, 0.3, 1)
+pillar_count = 10
+pillar_height = Vector2(8, 22)
+pillar_width = 3.5
+layout_seed = 7069
+
+[node name="Exits" type="Node3D" parent="."]
+
+[node name="center_south" type="Marker3D" parent="Exits"]
+position = Vector3(0.0, 0, -80.0)
+rotation = Vector3(0, 3.1415927, 0)
+
+[node name="swamp_ruins" type="Marker3D" parent="Exits"]
+position = Vector3(0.0, 0, 80.0)
+
+[node name="Spawn" type="Marker3D" parent="."]
+position = Vector3(0, 0, 0.0)

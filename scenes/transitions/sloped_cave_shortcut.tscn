@@ -1,0 +1,15 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/world/sloped_cave_shortcut.gd" id="1_shortcut"]
+
+[node name="SlopedCaveShortcut" type="Node3D"]
+script = ExtResource("1_shortcut")
+cross_section = Vector2(12, 10)
+door_size = Vector2(12, 10)
+one_way_from = 0
+
+[node name="EntryAnchor" type="Marker3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -5, 0)
+
+[node name="ExitAnchor" type="Marker3D" parent="."]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 0, -31, 72)

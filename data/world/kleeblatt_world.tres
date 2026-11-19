@@ -1,0 +1,544 @@
+[gd_resource type="Resource" script_class="WorldMapData" format=3]
+
+[ext_resource type="Script" path="res://scripts/world/world_map_data.gd" id="1_map"]
+[ext_resource type="Script" path="res://scripts/world/world_sector_data.gd" id="2_sector"]
+[ext_resource type="Script" path="res://scripts/world/sector_link.gd" id="3_link"]
+
+[sub_resource type="Resource" id="S_hq"]
+script = ExtResource("2_sector")
+id = &"hq"
+display_name = "Hauptquartier"
+region = 0
+scene_path = "res://scenes/areas/world/hq.tscn"
+tags = PackedStringArray("start")
+camp = 1
+camp_start_state = 3
+camp_build_cost = {}
+camp_upgrade_cost = {
+"gold": 400
+}
+
+[sub_resource type="Resource" id="S_cathedral_cave"]
+script = ExtResource("2_sector")
+id = &"cathedral_cave"
+display_name = "Kathedralen-Hoehle"
+region = 0
+scene_path = "res://scenes/test_arena.tscn"
+dead_end = true
+tags = PackedStringArray("arena")
+
+[sub_resource type="Resource" id="S_stem_1"]
+script = ExtResource("2_sector")
+id = &"stem_1"
+display_name = "Felsrampe"
+region = 1
+scene_path = "res://scenes/areas/world/stem_1.tscn"
+
+[sub_resource type="Resource" id="S_stem_2"]
+script = ExtResource("2_sector")
+id = &"stem_2"
+display_name = "Klammschlucht"
+region = 1
+scene_path = "res://scenes/areas/world/stem_2.tscn"
+
+[sub_resource type="Resource" id="S_stem_niche"]
+script = ExtResource("2_sector")
+id = &"stem_niche"
+display_name = "Moosnische"
+region = 1
+scene_path = "res://scenes/areas/world/stem_niche.tscn"
+dead_end = true
+tags = PackedStringArray("sleep_spot", "resource_spot")
+
+[sub_resource type="Resource" id="S_stem_3"]
+script = ExtResource("2_sector")
+id = &"stem_3"
+display_name = "Hangwald"
+region = 1
+scene_path = "res://scenes/areas/world/stem_3.tscn"
+
+[sub_resource type="Resource" id="S_stem_4"]
+script = ExtResource("2_sector")
+id = &"stem_4"
+display_name = "Gipfeltor"
+region = 1
+scene_path = "res://scenes/areas/world/stem_4.tscn"
+
+[sub_resource type="Resource" id="S_center_crossing"]
+script = ExtResource("2_sector")
+id = &"center_crossing"
+display_name = "Kleeblatt-Kreuzung"
+region = 2
+scene_path = "res://scenes/areas/world/center_crossing.tscn"
+tags = PackedStringArray("hub")
+camp = 2
+camp_start_state = 0
+camp_build_cost = {
+"gold": 300
+}
+camp_upgrade_cost = {
+"gold": 600
+}
+
+[sub_resource type="Resource" id="S_center_north"]
+script = ExtResource("2_sector")
+id = &"center_north"
+display_name = "Nordterrasse"
+region = 2
+scene_path = "res://scenes/areas/world/center_north.tscn"
+
+[sub_resource type="Resource" id="S_center_south"]
+script = ExtResource("2_sector")
+id = &"center_south"
+display_name = "Suedterrasse"
+region = 2
+scene_path = "res://scenes/areas/world/center_south.tscn"
+
+[sub_resource type="Resource" id="S_center_hollow"]
+script = ExtResource("2_sector")
+id = &"center_hollow"
+display_name = "Tiefe Senke"
+region = 2
+scene_path = "res://scenes/areas/world/center_hollow.tscn"
+tags = PackedStringArray("drop_landing")
+
+[sub_resource type="Resource" id="S_nature_forest_edge"]
+script = ExtResource("2_sector")
+id = &"nature_forest_edge"
+display_name = "Waldrand"
+region = 3
+scene_path = "res://scenes/areas/world/nature_forest_edge.tscn"
+
+[sub_resource type="Resource" id="S_nature_deep_forest"]
+script = ExtResource("2_sector")
+id = &"nature_deep_forest"
+display_name = "Tiefer Wald"
+region = 3
+scene_path = "res://scenes/areas/world/nature_deep_forest.tscn"
+tags = PackedStringArray("hidden_adds")
+
+[sub_resource type="Resource" id="S_nature_hidden_grove"]
+script = ExtResource("2_sector")
+id = &"nature_hidden_grove"
+display_name = "Verborgener Hain"
+region = 3
+scene_path = "res://scenes/areas/world/nature_hidden_grove.tscn"
+dead_end = true
+tags = PackedStringArray("hidden_adds", "resource_spot")
+
+[sub_resource type="Resource" id="S_nature_flatland"]
+script = ExtResource("2_sector")
+id = &"nature_flatland"
+display_name = "Flachland"
+region = 3
+scene_path = "res://scenes/areas/world/nature_flatland.tscn"
+tags = PackedStringArray("flying_grapple_minions")
+camp = 3
+camp_start_state = 0
+camp_unlock_quest = &"deliver_timber"
+camp_build_cost = {
+"gold": 250
+}
+camp_upgrade_cost = {
+"gold": 500
+}
+
+[sub_resource type="Resource" id="S_nature_lake"]
+script = ExtResource("2_sector")
+id = &"nature_lake"
+display_name = "Seeufer"
+region = 3
+scene_path = "res://scenes/areas/world/nature_lake.tscn"
+tags = PackedStringArray("lake")
+
+[sub_resource type="Resource" id="S_nature_reed_bay"]
+script = ExtResource("2_sector")
+id = &"nature_reed_bay"
+display_name = "Schilfbucht"
+region = 3
+scene_path = "res://scenes/areas/world/nature_reed_bay.tscn"
+dead_end = true
+tags = PackedStringArray("sleep_spot")
+
+[sub_resource type="Resource" id="S_swamp_marsh"]
+script = ExtResource("2_sector")
+id = &"swamp_marsh"
+display_name = "Sumpfrand"
+region = 4
+scene_path = "res://scenes/areas/world/swamp_marsh.tscn"
+
+[sub_resource type="Resource" id="S_swamp_ruins"]
+script = ExtResource("2_sector")
+id = &"swamp_ruins"
+display_name = "Versunkene Ruinen"
+region = 4
+scene_path = "res://scenes/areas/world/swamp_ruins.tscn"
+tags = PackedStringArray("ruins")
+camp = 3
+camp_start_state = 0
+camp_unlock_quest = &"deliver_herbs"
+camp_build_cost = {
+"gold": 250
+}
+camp_upgrade_cost = {
+"gold": 500
+}
+
+[sub_resource type="Resource" id="S_swamp_crypt"]
+script = ExtResource("2_sector")
+id = &"swamp_crypt"
+display_name = "Ruinen-Krypta"
+region = 4
+scene_path = "res://scenes/areas/world/swamp_crypt.tscn"
+dead_end = true
+tags = PackedStringArray("resource_spot")
+
+[sub_resource type="Resource" id="S_swamp_village"]
+script = ExtResource("2_sector")
+id = &"swamp_village"
+display_name = "Zerfallenes Dorf"
+region = 4
+scene_path = "res://scenes/areas/world/swamp_village.tscn"
+tags = PackedStringArray("village")
+
+[sub_resource type="Resource" id="S_mountain_foothills"]
+script = ExtResource("2_sector")
+id = &"mountain_foothills"
+display_name = "Vorgebirge"
+region = 5
+scene_path = "res://scenes/areas/world/mountain_foothills.tscn"
+
+[sub_resource type="Resource" id="S_mountain_cliffs"]
+script = ExtResource("2_sector")
+id = &"mountain_cliffs"
+display_name = "Steilwand"
+region = 5
+scene_path = "res://scenes/areas/world/mountain_cliffs.tscn"
+camp = 3
+camp_start_state = 0
+camp_unlock_quest = &"deliver_ore"
+camp_build_cost = {
+"gold": 250
+}
+camp_upgrade_cost = {
+"gold": 500
+}
+
+[sub_resource type="Resource" id="S_mountain_eagle_nest"]
+script = ExtResource("2_sector")
+id = &"mountain_eagle_nest"
+display_name = "Adlerhorst"
+region = 5
+scene_path = "res://scenes/areas/world/mountain_eagle_nest.tscn"
+dead_end = true
+tags = PackedStringArray("sleep_spot")
+
+[sub_resource type="Resource" id="S_mountain_summit"]
+script = ExtResource("2_sector")
+id = &"mountain_summit"
+display_name = "Gipfelgrat"
+region = 5
+scene_path = "res://scenes/areas/world/mountain_summit.tscn"
+tags = PackedStringArray("full_circle_drop")
+
+[sub_resource type="Resource" id="S_desert_rocks"]
+script = ExtResource("2_sector")
+id = &"desert_rocks"
+display_name = "Felswueste"
+region = 6
+scene_path = "res://scenes/areas/world/desert_rocks.tscn"
+tags = PackedStringArray("rock_desert")
+
+[sub_resource type="Resource" id="S_desert_sand"]
+script = ExtResource("2_sector")
+id = &"desert_sand"
+display_name = "Sandebene"
+region = 6
+scene_path = "res://scenes/areas/world/desert_sand.tscn"
+tags = PackedStringArray("sand")
+camp = 3
+camp_start_state = 0
+camp_unlock_quest = &"deliver_water"
+camp_build_cost = {
+"gold": 250
+}
+camp_upgrade_cost = {
+"gold": 500
+}
+
+[sub_resource type="Resource" id="S_desert_oasis"]
+script = ExtResource("2_sector")
+id = &"desert_oasis"
+display_name = "Oase"
+region = 6
+scene_path = "res://scenes/areas/world/desert_oasis.tscn"
+dead_end = true
+tags = PackedStringArray("sleep_spot", "resource_spot")
+
+[sub_resource type="Resource" id="S_desert_dunes"]
+script = ExtResource("2_sector")
+id = &"desert_dunes"
+display_name = "Duenenmeer"
+region = 6
+scene_path = "res://scenes/areas/world/desert_dunes.tscn"
+tags = PackedStringArray("dunes")
+
+[sub_resource type="Resource" id="S_desert_monoliths"]
+script = ExtResource("2_sector")
+id = &"desert_monoliths"
+display_name = "Monolithenfeld"
+region = 6
+scene_path = "res://scenes/areas/world/desert_monoliths.tscn"
+tags = PackedStringArray("monolith_anchors")
+
+[sub_resource type="Resource" id="L_0"]
+script = ExtResource("3_link")
+from_sector = &"cathedral_cave"
+to_sector = &"hq"
+transition = 0
+
+[sub_resource type="Resource" id="L_1"]
+script = ExtResource("3_link")
+from_sector = &"hq"
+to_sector = &"stem_1"
+transition = 1
+
+[sub_resource type="Resource" id="L_2"]
+script = ExtResource("3_link")
+from_sector = &"stem_1"
+to_sector = &"stem_2"
+transition = 0
+
+[sub_resource type="Resource" id="L_3"]
+script = ExtResource("3_link")
+from_sector = &"stem_2"
+to_sector = &"stem_3"
+transition = 1
+
+[sub_resource type="Resource" id="L_4"]
+script = ExtResource("3_link")
+from_sector = &"stem_2"
+to_sector = &"stem_niche"
+transition = 1
+
+[sub_resource type="Resource" id="L_5"]
+script = ExtResource("3_link")
+from_sector = &"stem_3"
+to_sector = &"stem_4"
+transition = 0
+
+[sub_resource type="Resource" id="L_6"]
+script = ExtResource("3_link")
+from_sector = &"stem_4"
+to_sector = &"center_crossing"
+transition = 1
+
+[sub_resource type="Resource" id="L_7"]
+script = ExtResource("3_link")
+from_sector = &"center_crossing"
+to_sector = &"hq"
+transition = 2
+one_way = true
+
+[sub_resource type="Resource" id="L_8"]
+script = ExtResource("3_link")
+from_sector = &"center_crossing"
+to_sector = &"center_north"
+transition = 1
+
+[sub_resource type="Resource" id="L_9"]
+script = ExtResource("3_link")
+from_sector = &"center_crossing"
+to_sector = &"center_south"
+transition = 1
+
+[sub_resource type="Resource" id="L_10"]
+script = ExtResource("3_link")
+from_sector = &"center_crossing"
+to_sector = &"center_hollow"
+transition = 0
+block = 1
+
+[sub_resource type="Resource" id="L_11"]
+script = ExtResource("3_link")
+from_sector = &"center_hollow"
+to_sector = &"center_south"
+transition = 1
+
+[sub_resource type="Resource" id="L_12"]
+script = ExtResource("3_link")
+from_sector = &"center_crossing"
+to_sector = &"nature_forest_edge"
+transition = 1
+
+[sub_resource type="Resource" id="L_13"]
+script = ExtResource("3_link")
+from_sector = &"nature_forest_edge"
+to_sector = &"nature_deep_forest"
+transition = 0
+
+[sub_resource type="Resource" id="L_14"]
+script = ExtResource("3_link")
+from_sector = &"nature_deep_forest"
+to_sector = &"nature_hidden_grove"
+transition = 1
+block = 2
+
+[sub_resource type="Resource" id="L_15"]
+script = ExtResource("3_link")
+from_sector = &"nature_deep_forest"
+to_sector = &"nature_flatland"
+transition = 1
+
+[sub_resource type="Resource" id="L_16"]
+script = ExtResource("3_link")
+from_sector = &"nature_flatland"
+to_sector = &"nature_lake"
+transition = 1
+
+[sub_resource type="Resource" id="L_17"]
+script = ExtResource("3_link")
+from_sector = &"nature_lake"
+to_sector = &"nature_reed_bay"
+transition = 1
+
+[sub_resource type="Resource" id="L_18"]
+script = ExtResource("3_link")
+from_sector = &"nature_lake"
+to_sector = &"center_north"
+transition = 0
+
+[sub_resource type="Resource" id="L_19"]
+script = ExtResource("3_link")
+from_sector = &"nature_deep_forest"
+to_sector = &"nature_lake"
+transition = 1
+monster_only = true
+
+[sub_resource type="Resource" id="L_20"]
+script = ExtResource("3_link")
+from_sector = &"center_south"
+to_sector = &"swamp_marsh"
+transition = 1
+
+[sub_resource type="Resource" id="L_21"]
+script = ExtResource("3_link")
+from_sector = &"swamp_marsh"
+to_sector = &"swamp_ruins"
+transition = 0
+
+[sub_resource type="Resource" id="L_22"]
+script = ExtResource("3_link")
+from_sector = &"swamp_ruins"
+to_sector = &"swamp_crypt"
+transition = 0
+block = 1
+
+[sub_resource type="Resource" id="L_23"]
+script = ExtResource("3_link")
+from_sector = &"swamp_ruins"
+to_sector = &"swamp_village"
+transition = 1
+
+[sub_resource type="Resource" id="L_24"]
+script = ExtResource("3_link")
+from_sector = &"swamp_village"
+to_sector = &"center_crossing"
+transition = 0
+
+[sub_resource type="Resource" id="L_25"]
+script = ExtResource("3_link")
+from_sector = &"swamp_marsh"
+to_sector = &"swamp_village"
+transition = 0
+monster_only = true
+
+[sub_resource type="Resource" id="L_26"]
+script = ExtResource("3_link")
+from_sector = &"center_north"
+to_sector = &"mountain_foothills"
+transition = 1
+
+[sub_resource type="Resource" id="L_27"]
+script = ExtResource("3_link")
+from_sector = &"mountain_foothills"
+to_sector = &"mountain_cliffs"
+transition = 0
+
+[sub_resource type="Resource" id="L_28"]
+script = ExtResource("3_link")
+from_sector = &"mountain_cliffs"
+to_sector = &"mountain_eagle_nest"
+transition = 1
+block = 3
+
+[sub_resource type="Resource" id="L_29"]
+script = ExtResource("3_link")
+from_sector = &"mountain_cliffs"
+to_sector = &"mountain_summit"
+transition = 1
+
+[sub_resource type="Resource" id="L_30"]
+script = ExtResource("3_link")
+from_sector = &"mountain_summit"
+to_sector = &"center_hollow"
+transition = 2
+one_way = true
+
+[sub_resource type="Resource" id="L_31"]
+script = ExtResource("3_link")
+from_sector = &"mountain_summit"
+to_sector = &"mountain_foothills"
+transition = 1
+monster_only = true
+
+[sub_resource type="Resource" id="L_32"]
+script = ExtResource("3_link")
+from_sector = &"center_south"
+to_sector = &"desert_rocks"
+transition = 1
+
+[sub_resource type="Resource" id="L_33"]
+script = ExtResource("3_link")
+from_sector = &"desert_rocks"
+to_sector = &"desert_sand"
+transition = 0
+
+[sub_resource type="Resource" id="L_34"]
+script = ExtResource("3_link")
+from_sector = &"desert_sand"
+to_sector = &"desert_oasis"
+transition = 1
+
+[sub_resource type="Resource" id="L_35"]
+script = ExtResource("3_link")
+from_sector = &"desert_sand"
+to_sector = &"desert_dunes"
+transition = 1
+
+[sub_resource type="Resource" id="L_36"]
+script = ExtResource("3_link")
+from_sector = &"desert_dunes"
+to_sector = &"desert_monoliths"
+transition = 1
+
+[sub_resource type="Resource" id="L_37"]
+script = ExtResource("3_link")
+from_sector = &"desert_monoliths"
+to_sector = &"center_crossing"
+transition = 0
+
+[sub_resource type="Resource" id="L_38"]
+script = ExtResource("3_link")
+from_sector = &"desert_dunes"
+to_sector = &"desert_rocks"
+transition = 0
+monster_only = true
+
+[resource]
+script = ExtResource("1_map")
+map_id = &"kleeblatt"
+display_name = "Kleeblatt-Hauptwelt"
+start_sector = &"hq"
+sectors = Array[ExtResource("2_sector")]([SubResource("S_hq"), SubResource("S_cathedral_cave"), SubResource("S_stem_1"), SubResource("S_stem_2"), SubResource("S_stem_niche"), SubResource("S_stem_3"), SubResource("S_stem_4"), SubResource("S_center_crossing"), SubResource("S_center_north"), SubResource("S_center_south"), SubResource("S_center_hollow"), SubResource("S_nature_forest_edge"), SubResource("S_nature_deep_forest"), SubResource("S_nature_hidden_grove"), SubResource("S_nature_flatland"), SubResource("S_nature_lake"), SubResource("S_nature_reed_bay"), SubResource("S_swamp_marsh"), SubResource("S_swamp_ruins"), SubResource("S_swamp_crypt"), SubResource("S_swamp_village"), SubResource("S_mountain_foothills"), SubResource("S_mountain_cliffs"), SubResource("S_mountain_eagle_nest"), SubResource("S_mountain_summit"), SubResource("S_desert_rocks"), SubResource("S_desert_sand"), SubResource("S_desert_oasis"), SubResource("S_desert_dunes"), SubResource("S_desert_monoliths")])
+links = Array[ExtResource("3_link")]([SubResource("L_0"), SubResource("L_1"), SubResource("L_2"), SubResource("L_3"), SubResource("L_4"), SubResource("L_5"), SubResource("L_6"), SubResource("L_7"), SubResource("L_8"), SubResource("L_9"), SubResource("L_10"), SubResource("L_11"), SubResource("L_12"), SubResource("L_13"), SubResource("L_14"), SubResource("L_15"), SubResource("L_16"), SubResource("L_17"), SubResource("L_18"), SubResource("L_19"), SubResource("L_20"), SubResource("L_21"), SubResource("L_22"), SubResource("L_23"), SubResource("L_24"), SubResource("L_25"), SubResource("L_26"), SubResource("L_27"), SubResource("L_28"), SubResource("L_29"), SubResource("L_30"), SubResource("L_31"), SubResource("L_32"), SubResource("L_33"), SubResource("L_34"), SubResource("L_35"), SubResource("L_36"), SubResource("L_37"), SubResource("L_38")])

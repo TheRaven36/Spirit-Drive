@@ -28,6 +28,12 @@
 
 [ext_resource type="Script" path="res://scripts/guardian_progress.gd" id="16_progress"]
 
+[ext_resource type="Script" path="res://scripts/world/world_map_manager.gd" id="17_worldmap"]
+
+[ext_resource type="Resource" path="res://data/world/kleeblatt_world.tres" id="18_kleeblatt"]
+
+[ext_resource type="Resource" path="res://data/world/hardcore_contrast_map.tres" id="19_hardcore"]
+
 [sub_resource type="ProceduralSkyMaterial" id="SkyMat"]
 sky_top_color = Color(0.32, 0.5, 0.78, 1)
 sky_horizon_color = Color(0.72, 0.78, 0.86, 1)
@@ -94,8 +100,17 @@ radius = 0.25
 
 [node name="Tunnel" parent="Areas" instance=ExtResource("15_tunnel")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 9, 150)
+sector_a = &"cathedral_cave"
+sector_b = &"hq"
 area_a_path = NodePath("../TestArena")
 guardian_path = NodePath("../../Guardian")
+
+[node name="WorldMap" type="Node" parent="."]
+script = ExtResource("17_worldmap")
+map = ExtResource("18_kleeblatt")
+hardcore_map = ExtResource("19_hardcore")
+areas_path = NodePath("../Areas")
+guardian_path = NodePath("../Guardian")
 
 [node name="WorldEnvironment" type="WorldEnvironment" parent="."]
 environment = SubResource("Env")

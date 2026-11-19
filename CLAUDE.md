@@ -6,7 +6,7 @@ Ablauf, Branches, Release und Checks: [docs/WORKFLOW.md](docs/WORKFLOW.md) – g
 
 ## Projektstruktur
 ```
-scenes/world.tscn           Hauptszene (F5): Guardian, HUDs, Licht + Areas (Hoehle, Tunnel)
+scenes/world.tscn           Hauptszene (F5): Guardian, HUDs, Licht, Areas (Hoehle, Tunnel), WorldMap
 scenes/test_arena.tscn      Hoehlen-Arena (Areal, wird vom Tunnel ent-/geladen)
 scenes/homebase_outpost.tscn  Homebase-Prefab: SafeZone + 4 Stationen
 scenes/organic_transition_tunnel.tscn  3D-Grapple-Tunnel mit asynchronem Loading Gate
@@ -15,6 +15,8 @@ scenes/spirits/spirit_entity.tscn  Feld-Spirit (Greybox-Kapsel, Hitbox)
 scenes/ui/minimal_hud.tscn  Minimal-HUD (HP, Haken, Spirit-Slots, Steuerungs-Overlay auf +)
 scenes/ui/damage_number.tscn  Eine Floating Damage Number (Label + Pop-Tween)
 scenes/areas/               Streamfaehige Areale (keine Megaszene)
+scenes/areas/world/         Whitebox-Sektoren der Kleeblatt-Welt (hq.tscn = HQ mit Homebase-Prefab als Camp)
+scenes/transitions/         rock_pass_transition.tscn, sloped_cave_shortcut.tscn
 scripts/
   guardian_controller.gd    Spieler: Movement, Wall-Run, Seilphysik, Kamera
   guardian_input.gd         Input-Actions zur Laufzeit (Tastatur/Maus + Xbox)
@@ -25,7 +27,11 @@ scripts/
   debug_hud.gd              Fadenkreuz + Debug-Werte (oben rechts)
   health_component.gd       Lebenspunkte (Komponente, Signal health_changed)
   guardian_progress.gd      Besitz/Fortschritt (Material, Rucksack, Truhe, Ausruestung, Upgrades)
-  organic_transition_tunnel.gd  Tunnel: CSG-Roehre, Anker, Barrieren, load_threaded_request
+  organic_transition_tunnel.gd  Tunnel: CSG-Roehre + Felsvorspruenge (extends SeamlessLoadingGate)
+  world/                    SeamlessLoadingGate (async Laden/Entladen, Exit-Marker, Sperren, Einbahn),
+                            RockPassTransition, SlopedCaveShortcut, WhiteboxSector,
+                            WorldMapData/WorldSectorData/SectorLink (Graph-Daten),
+                            WorldMapManager (Uebergaenge setzen/freigeben, Sperren, Lager, Schnellreise)
   homebase/                 HomebaseOutpost, InteractionStation (F/ESC) + StationWindow,
                             SpiritAltar, EquipmentStash, ForgeStation, MerchantStation
   spirits/                  SpiritData (Resource), SpiritLibrary, SpiritRosterComponent (3er-Roster,
@@ -38,12 +44,14 @@ scripts/
   training_dummy.gd         Trainings-Ziel
   training_giant.gd         Test-Gegner mit LockPoints, size_scale, Element (Saeule + Glow), Ruestung
 data/spirits/               Die 9 Basis-Spirits (.tres)
+data/world/                 kleeblatt_world.tres (Welt-Graph), hardcore_contrast_map.tres (Platzhalter)
 assets/shaders|models|textures
 tests/movement_smoke_test.gd  Headless-Smoke-Test (Exit-Code 0 = ok)
 tests/spirit_system_test.gd   Spirit-System + Minimal-HUD (Exit-Code 0 = ok)
 tests/spirit_entity_test.gd   Feld-Spirit-KI: Follow, Bodyguard, Hard-Lock-Befehl (Exit-Code 0 = ok)
 tests/homebase_test.gd        Homebase: Stationen, Interaktion, Altar-Kombinationen, SafeZone
 tests/tunnel_test.gd          Tunnel: Geometrie, asynchrones Laden/Entladen in beide Richtungen
+tests/world_map_test.gd       Kleeblatt-Graph, Sperren, Lager/Schnellreise, Streaming-Kette
 tools/, start_game.bat      Windows-Start + UID-Konflikt-Fix
 docs/WORKFLOW.md, docs/PATCHNOTES.md
 ```
@@ -72,6 +80,6 @@ docs/WORKFLOW.md, docs/PATCHNOTES.md
 1. `godot --headless --path . --import` und erzeugte `.uid`-Dateien mitcommitten.
 2. Alle Suites in `tests/` muessen Exit-Code 0 liefern:
    `godot --headless --path . --script res://tests/<suite>.gd` fuer movement_smoke_test,
-   spirit_system_test, spirit_entity_test, homebase_test, tunnel_test.
+   spirit_system_test, spirit_entity_test, homebase_test, tunnel_test, world_map_test.
 3. Eintrag in `docs/PATCHNOTES.md` (neueste oben).
 4. Nur auf `Robin-Branch` committen und pushen; `main` nur nach Robins Freigabe.

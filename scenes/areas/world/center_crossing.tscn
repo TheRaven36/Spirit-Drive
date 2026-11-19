@@ -1,0 +1,50 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/world/whitebox_sector.gd" id="1_sector"]
+[ext_resource type="PackedScene" path="res://scenes/homebase_outpost.tscn" id="2_camp"]
+
+[node name="CenterCrossing" type="Node3D"]
+script = ExtResource("1_sector")
+size = Vector2(200, 200)
+theme_color = Color(0.5, 0.52, 0.56, 1)
+pillar_count = 8
+pillar_height = Vector2(20, 45)
+pillar_width = 5.0
+layout_seed = 12972
+
+[node name="Exits" type="Node3D" parent="."]
+
+[node name="stem_4" type="Marker3D" parent="Exits"]
+position = Vector3(-45.0, 0, -100.0)
+rotation = Vector3(0, 3.1415927, 0)
+
+[node name="center_hollow" type="Marker3D" parent="Exits"]
+position = Vector3(45.0, 0, -100.0)
+rotation = Vector3(0, 3.1415927, 0)
+
+[node name="hq" type="Marker3D" parent="Exits"]
+position = Vector3(-45.0, 0, 100.0)
+
+[node name="nature_forest_edge" type="Marker3D" parent="Exits"]
+position = Vector3(45.0, 0, 100.0)
+
+[node name="center_north" type="Marker3D" parent="Exits"]
+position = Vector3(100.0, 0, -45.0)
+rotation = Vector3(0, 1.5707963, 0)
+
+[node name="swamp_village" type="Marker3D" parent="Exits"]
+position = Vector3(100.0, 0, 45.0)
+rotation = Vector3(0, 1.5707963, 0)
+
+[node name="center_south" type="Marker3D" parent="Exits"]
+position = Vector3(-100.0, 0, -45.0)
+rotation = Vector3(0, -1.5707963, 0)
+
+[node name="desert_monoliths" type="Marker3D" parent="Exits"]
+position = Vector3(-100.0, 0, 45.0)
+rotation = Vector3(0, -1.5707963, 0)
+
+[node name="Spawn" type="Marker3D" parent="."]
+position = Vector3(0, 0, -6.0)
+
+[node name="Camp" parent="." instance=ExtResource("2_camp")]

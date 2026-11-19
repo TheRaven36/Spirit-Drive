@@ -1,0 +1,14 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/world/rock_pass_transition.gd" id="1_pass"]
+
+[node name="RockPassTransition" type="Node3D"]
+script = ExtResource("1_pass")
+cross_section = Vector2(14, 16)
+door_size = Vector2(14, 16)
+
+[node name="EntryAnchor" type="Marker3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -8, 0)
+
+[node name="ExitAnchor" type="Marker3D" parent="."]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 0, -8, 140)

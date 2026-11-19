@@ -2,6 +2,45 @@
 
 Neueste Einträge immer oben.
 
+## Unreleased
+
+### 2026-11-19 – Phase 3E: Kleeblatt-Weltgerüst, blockierte Übergänge, ausbaubare Lager
+**Welt-Graph (datengetrieben, `data/world/kleeblatt_world.tres`)**
+- `WorldMapData` (Sektoren + Links, Breitensuche `find_path`, `neighbors`), `WorldSectorData` (Region, Szene,
+  Dead-End, Tags, Lager), `SectorLink` (Übergangs-Typ, Sperre, `one_way`, `monster_only`). Keine feste
+  Sektor-Zahl: Sektoren/Links im Inspector ergänzen oder löschen genügt.
+- 30 Sektoren / 39 Links: HQ + Kathedralen-Höhle, Stängel (4 + Moosnische), Zentrum (Kreuzung mit
+  Zentrumslager, Nord-/Südterrasse, Tiefe Senke), 4 Schleifen mit je 1–2 Dead-End-Nischen:
+  Natur (Waldrand, Tiefer Wald `hidden_adds`, Flachland `flying_grapple_minions`, Seeufer),
+  Sumpf (Sumpfrand, Ruinen, Zerfallenes Dorf), Berg (Vorgebirge, Steilwand, Gipfelgrat → Einbahn-Drop in
+  die Tiefe Senke), Wüste (Felsen → Sand → Dünen → Monolithenfeld, `monolith_anchors`).
+- 4 Monster-Pfade (`monster_only`), 2 Einbahn-Shortcuts (Gipfel → Senke, Zentrum → HQ).
+- Platzhalter `data/world/hardcore_contrast_map.tres` (deaktiviert) + Regionen `HARDCORE_FIRE/ICE`.
+
+**Übergänge & Streaming**
+- Neues `SeamlessLoadingGate` (Basis aus dem Tunnel herausgelöst, Ablauf unverändert): Andocken über
+  Exit-Marker `Exits/<Nachbar>`, Einbahn (`one_way_from`), Sperren. Tunnel-Anker liegen jetzt an den Toren.
+- Neu: `RockPassTransition` (offene Schlucht, Felsbögen als Anker) und `SlopedCaveShortcut` (abfallende
+  CSG-Höhle).
+- `WorldMapManager` (Knoten in `world.tscn`, kein Singleton): setzt beim Laden eines Sektors dessen
+  Übergänge an die Exit-Marker und gibt sie wieder frei → nur das aktive Areal im Speicher.
+- 29 Whitebox-Sektoren (`scenes/areas/world/`, `WhiteboxSector`): Boden, Randwände mit Toren, Säulen/Monolithe
+  (ein Body, ein MultiMesh). Das HQ ist ein Sektor mit dem unveränderten Homebase-Prefab als `Camp`.
+
+**Blockierte Übergänge (`GateBlockType`)**
+- `NONE`, `ROCK_BLOCK`, `BURNABLE_GROWTH`, `CLASH_TREE`: Hindernis mit Collision in der Mitte, das Gate
+  lädt nichts. `unlock_gate()` / `WorldMapManager.unlock_link()` räumen es weg bzw. lassen den Baum umstürzen.
+
+**Lager (`CampUnlockState`)**
+- `UNDISCOVERED` → `LOCKED` (Liefer-Quest-Platzhalter) / `AVAILABLE_FOR_BUILD` → `TIER_1` → `UPGRADED`,
+  Kosten als Material-Dictionary (`GuardianProgress.spend`). Ungebaute Lager sind unsichtbar, ohne SafeZone.
+- Schnellreise nur aus einer SafeZone zu gebauten Lagern, asynchron über `load_threaded_request`.
+
+**Tests**
+- Neu `tests/world_map_test.gd`: Graph, Schleifen, monster_only/Einbahn, ohne Sektor-Limit, alle Szenen;
+  alle 3 Sperren (Pass/Tunnel/Shortcut); Lager-Zustände; Schnellreise + SafeZone; Kette Höhle → HQ,
+  Zentrum → Dorf → Ruinen. Tunnel-Test: HQ-Sektor + Andocken per Exit-Marker.
+
 ## v0.10 – Release 2026-11-18
 
 ### 2026-11-18 – Phase 3B: Damage-Number-Entzerrung, großer Tunnel, Elementar-Riesen

@@ -40,6 +40,8 @@ godot --headless --path . --script res://tests/spirit_entity_test.gd
 # Homebase-Stationen + Tunnel-Loading-Gate (Exit-Code 0 = ok)
 godot --headless --path . --script res://tests/homebase_test.gd
 godot --headless --path . --script res://tests/tunnel_test.gd
+# Kleeblatt-Welt: Graph, Sperren, Lager, Schnellreise, Streaming-Kette (Exit-Code 0 = ok)
+godot --headless --path . --script res://tests/world_map_test.gd
 ```
 
 ## Lokal starten (Windows)
@@ -53,11 +55,14 @@ godot --headless --path . --script res://tests/tunnel_test.gd
 ## Projektstruktur
 ```
 scenes/          Szenen (.tscn); scenes/areas/ = streamfähige Areale
+scenes/areas/world/  Whitebox-Sektoren der Kleeblatt-Welt
+scenes/transitions/  Felspass + abfallende Hoehlen-Abkuerzung
 scenes/ui/       HUD-Szenen (minimal_hud.tscn)
 scripts/         GDScript-Logik (Guardian, Injects, Mobs …)
 scripts/spirits/ Spirit-Daten, Roster-Komponente, Feld-Avatar
 scripts/ui/      HUD-Skripte und -Widgets
 data/spirits/    Die 9 Basis-Spirits (.tres)
+data/world/      Welt-Graph (kleeblatt_world.tres) + Hardcore-Platzhalter
 assets/          shaders/, models/, textures/ …
 tests/           Headless-Tests
 docs/            WORKFLOW.md, PATCHNOTES.md

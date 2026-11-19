@@ -1,0 +1,9 @@
+[gd_resource type="Resource" script_class="WorldMapData" format=3]
+
+[ext_resource type="Script" path="res://scripts/world/world_map_data.gd" id="1_map"]
+
+[resource]
+script = ExtResource("1_map")
+map_id = &"hardcore_contrast"
+display_name = "Kontrast-Map (Feuer/Vulkan vs. Eis/Blizzard) – Platzhalter"
+enabled = false

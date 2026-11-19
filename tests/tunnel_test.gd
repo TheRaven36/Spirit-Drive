@@ -1,6 +1,8 @@
 extends SceneTree
 ## Headless-Test fuer den OrganicTransitionTunnel (Phase 3A): 3D-S-Kurve mit Collision,
-## Felsvorspruenge, Barrieren, asynchrones Laden/Entladen Hoehle -> Homebase und zurueck.
+## Felsvorspruenge, Barrieren, asynchrones Laden/Entladen Hoehle -> Hauptquartier und zurueck.
+## Phase 3E: Das HQ ist ein Whitebox-Sektor mit dem Homebase-Prefab als "Camp"; angedockt wird
+## ueber den Exit-Marker "Exits/cathedral_cave".
 ## Aufruf: godot --headless --path . --script res://tests/tunnel_test.gd
 ## Exit-Code 0 = alles ok, 1 = Fehler.
 
@@ -87,9 +89,11 @@ func _test_to_homebase() -> void:
 	_check(not is_instance_valid(arena) and tunnel.area(A) == null, "nach der ersten Biegung: Hoehle entladen")
 	_check(not tunnel.is_barrier_open(A), "Barriere zur (leeren) Hoehlen-Seite geschlossen")
 	var base := await _wait_loaded(B)
-	_check(base is HomebaseOutpost, "Homebase geladen (THREAD_LOAD_LOADED)")
-	_check(base != null and base.global_transform.is_equal_approx(tunnel.get_node("ExitAnchor").global_transform),
-			"am ExitAnchor angedockt")
+	_check(base is WhiteboxSector and base.get_node("Camp") is HomebaseOutpost,
+			"Hauptquartier mit Homebase geladen (THREAD_LOAD_LOADED)")
+	var docked: Transform3D = tunnel.get_node("ExitAnchor").global_transform \
+			* (base.get_node("Exits/cathedral_cave") as Node3D).transform.affine_inverse() if base != null else Transform3D()
+	_check(base != null and base.global_transform.is_equal_approx(docked), "Exit-Marker liegt am ExitAnchor")
 	_check(tunnel.is_barrier_open(B), "Ausgangs-Barriere oeffnet")
 	# Durch den Ausgang in die Homebase
 	g.global_position = base.global_position + Vector3(0, 1.2, 0)

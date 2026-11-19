@@ -1,0 +1,31 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/world/whitebox_sector.gd" id="1_sector"]
+[ext_resource type="PackedScene" path="res://scenes/homebase_outpost.tscn" id="2_camp"]
+
+[node name="SwampRuins" type="Node3D"]
+script = ExtResource("1_sector")
+size = Vector2(160, 160)
+theme_color = Color(0.34, 0.38, 0.3, 1)
+pillar_count = 10
+pillar_height = Vector2(10, 26)
+pillar_width = 6.0
+layout_seed = 7254
+
+[node name="Exits" type="Node3D" parent="."]
+
+[node name="swamp_marsh" type="Marker3D" parent="Exits"]
+position = Vector3(0.0, 0, -80.0)
+rotation = Vector3(0, 3.1415927, 0)
+
+[node name="swamp_crypt" type="Marker3D" parent="Exits"]
+position = Vector3(0.0, 0, 80.0)
+
+[node name="swamp_village" type="Marker3D" parent="Exits"]
+position = Vector3(80.0, 0, 0.0)
+rotation = Vector3(0, 1.5707963, 0)
+
+[node name="Spawn" type="Marker3D" parent="."]
+position = Vector3(0, 0, -6.0)
+
+[node name="Camp" parent="." instance=ExtResource("2_camp")]

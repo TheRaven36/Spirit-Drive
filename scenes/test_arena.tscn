@@ -26,3 +26,8 @@ mesh = SubResource("FloorMesh")
 
 [node name="Shape" type="CollisionShape3D" parent="Floor"]
 shape = SubResource("FloorShape")
+
+[node name="Exits" type="Node3D" parent="."]
+
+[node name="hq" type="Marker3D" parent="Exits"]
+position = Vector3(0, 0, 150)

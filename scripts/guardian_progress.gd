@@ -95,6 +95,15 @@ func can_afford(cost: Dictionary) -> bool:
 	return true
 
 
+## Kosten bezahlen, falls bezahlbar (z. B. Lager-Bau ueber den WorldMapManager).
+func spend(cost: Dictionary) -> bool:
+	if not can_afford(cost):
+		return false
+	_pay(cost)
+	changed.emit()
+	return true
+
+
 func _pay(cost: Dictionary) -> void:
 	for m: String in cost:
 		materials[m] -= cost[m]

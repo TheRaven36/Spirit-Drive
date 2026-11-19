@@ -1,0 +1,24 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/world/whitebox_sector.gd" id="1_sector"]
+
+[node name="Stem1" type="Node3D"]
+script = ExtResource("1_sector")
+size = Vector2(160, 160)
+theme_color = Color(0.52, 0.48, 0.42, 1)
+pillar_count = 8
+pillar_height = Vector2(16, 38)
+pillar_width = 4.0
+layout_seed = 1855
+
+[node name="Exits" type="Node3D" parent="."]
+
+[node name="hq" type="Marker3D" parent="Exits"]
+position = Vector3(0.0, 0, -80.0)
+rotation = Vector3(0, 3.1415927, 0)
+
+[node name="stem_2" type="Marker3D" parent="Exits"]
+position = Vector3(0.0, 0, 80.0)
+
+[node name="Spawn" type="Marker3D" parent="."]
+position = Vector3(0, 0, 0.0)
